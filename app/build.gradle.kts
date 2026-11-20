@@ -33,7 +33,11 @@ base {
 }
 
 android {
-    compileSdk = project.libs.versions.app.build.compileSDKVersion.get().toInt()
+    compileSdk {
+        version = release(project.libs.versions.app.build.compileSDKVersion.get().toInt()) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         applicationId = project.property("APP_ID").toString()
