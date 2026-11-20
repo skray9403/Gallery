@@ -41,7 +41,7 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install Android 36 platform and build tools
-        run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
+        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -49,11 +49,14 @@ jobs:
       - name: Build both distribution variants and run baseline checks
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace \
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace --console=plain \
             :app:assembleFossDebug \
             :app:assembleGplayDebug \
             :app:testFossDebugUnitTest \
-            :app:lintFossDebug
+            :app:testGplayDebugUnitTest \
+            :app:lintFossDebug \
+            :app:lintGplayDebug 2>&1 | tee gradle-build.log
 
       - name: Upload FOSS debug APK
         uses: actions/upload-artifact@v4
@@ -69,6 +72,15 @@ jobs:
           name: folio-gplay-debug
           path: app/build/outputs/apk/gplay/debug/*.apk
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Gradle build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: folio-gradle-build-log
+          path: gradle-build.log
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload verification reports
