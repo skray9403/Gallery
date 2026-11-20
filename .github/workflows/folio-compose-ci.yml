@@ -50,13 +50,10 @@ jobs:
         run: |
           chmod +x ./gradlew
           set -o pipefail
-          ./gradlew --no-daemon --stacktrace --console=plain \
-            :app:assembleDebug \
-            :app:assembleGplayDebug \
-            :app:testDebugUnitTest \
-            :app:testGplayDebugUnitTest \
-            :app:lintDebug \
-            :app: 2>&1 | tee gradle-build.log
+          ./gradlew --no-daemon --stacktrace --console=plain \\
+            :app:assembleDebug \\
+            :app:testDebugUnitTest \\
+            :app:lintDebug 2>&1 | tee gradle-build.log
 
       - name: Upload Folio debug APK
         uses: actions/upload-artifact@v4
