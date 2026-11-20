@@ -2,10 +2,14 @@ package org.fossify.gallery.ui
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 /**
  * Compose entry point for Folio and Android's image/video picker intents.
@@ -14,22 +18,21 @@ import androidx.activity.enableEdgeToEdge
  * behavior is migrated; normal launch and picker flows now enter Compose.
  */
 class FolioActivity : ComponentActivity() {
+    private var launchRequest by mutableStateOf(FolioLaunchRequest())
+    private var launchRevision = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        val incomingAction = intent?.action
-        val isPickerMode = incomingAction == Intent.ACTION_PICK ||
-            incomingAction == Intent.ACTION_GET_CONTENT
-        val isViewAction = incomingAction == Intent.ACTION_VIEW
-        val initialUri = intent?.data.takeIf { isViewAction }
-        val requestedMimeType = intent?.type
+        updateLaunchRequest(intent)
 
         setContent {
+            val request = launchRequest
             FolioApp(
-                pickerMode = isPickerMode,
-                pickerMimeType = requestedMimeType,
-                initialUri = initialUri,
+                pickerMode = request.pickerMode,
+                pickerMimeType = request.mimeType,
+                initialUri = request.initialUri,
+                launchRevision = request.revision,
                 onMediaPicked = { uri ->
                     setResult(
                         Activity.RESULT_OK,
@@ -43,4 +46,29 @@ class FolioActivity : ComponentActivity() {
             )
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        updateLaunchRequest(intent)
+    }
+
+    private fun updateLaunchRequest(intent: Intent?) {
+        launchRevision += 1
+        val action = intent?.action
+        val pickerMode = action == Intent.ACTION_PICK || action == Intent.ACTION_GET_CONTENT
+        launchRequest = FolioLaunchRequest(
+            pickerMode = pickerMode,
+            mimeType = if (pickerMode) intent?.type else null,
+            initialUri = intent?.data.takeIf { action == Intent.ACTION_VIEW },
+            revision = launchRevision
+        )
+    }
 }
+
+private data class FolioLaunchRequest(
+    val pickerMode: Boolean = false,
+    val mimeType: String? = null,
+    val initialUri: Uri? = null,
+    val revision: Int = 0
+)

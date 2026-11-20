@@ -73,6 +73,7 @@ fun FolioApp(
     pickerMode: Boolean = false,
     pickerMimeType: String? = null,
     initialUri: Uri? = null,
+    launchRevision: Int = 0,
     onMediaPicked: (Uri) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -272,6 +273,13 @@ fun FolioApp(
         } else {
             mediaItems = emptyList()
             trashItems = emptyList()
+        }
+    }
+
+    LaunchedEffect(launchRevision, pickerMode, pickerMimeType) {
+        selectedUris = emptySet()
+        if (pickerMode || initialUri == null) {
+            selectedMedia = null
         }
     }
 
