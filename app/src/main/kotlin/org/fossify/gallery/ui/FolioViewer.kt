@@ -1,6 +1,7 @@
 package org.fossify.gallery.ui
 
 import android.content.Context
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.view.View
 import android.widget.FrameLayout
@@ -26,14 +27,20 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.load.engine.GlideException
+import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.target.Target
 import com.bumptech.glide.signature.ObjectKey
 import com.davemorrissey.labs.subscaleview.DecoderFactory
 import com.davemorrissey.labs.subscaleview.ImageDecoder
 import com.davemorrissey.labs.subscaleview.ImageRegionDecoder
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.fossify.gallery.helpers.MyGlideImageDecoder
 import org.fossify.gallery.helpers.PicassoRegionDecoder
@@ -49,10 +56,17 @@ internal fun FolioViewer(
     val context = LocalContext.current
     val entranceScale = remember(item.uri) { Animatable(0.88f) }
     val entranceAlpha = remember(item.uri) { Animatable(0f) }
+    var mediaReady by remember(item.uri) { mutableStateOf(false) }
 
     LaunchedEffect(item.uri) {
-        launch { entranceScale.animateTo(1f, FolioMotion.gentle()) }
-        launch { entranceAlpha.animateTo(1f, FolioMotion.contentEnter) }
+        delay(1200)
+        mediaReady = true
+    }
+    LaunchedEffect(item.uri, mediaReady) {
+        if (mediaReady) {
+            launch { entranceScale.animateTo(1f, FolioMotion.gentle()) }
+            launch { entranceAlpha.animateTo(1f, FolioMotion.contentEnter) }
+        }
     }
 
     Surface(modifier = modifier, color = Color.Black) {
@@ -70,10 +84,18 @@ internal fun FolioViewer(
                     item.isVideo -> {
                         val player = remember(item.uri) { ExoPlayer.Builder(context).build() }
                         DisposableEffect(player, item.uri) {
+                            val listener = object : Player.Listener {
+                                override fun onRenderedFirstFrame() { mediaReady = true }
+                                override fun onPlayerError(error: PlaybackException) { mediaReady = true }
+                            }
+                            player.addListener(listener)
                             player.setMediaItem(PlayerMediaItem.fromUri(item.uri))
                             player.prepare()
                             player.playWhenReady = true
-                            onDispose { player.release() }
+                            onDispose {
+                                player.removeListener(listener)
+                                player.release()
+                            }
                         }
                         AndroidView(
                             modifier = Modifier.fillMaxSize(),
@@ -86,9 +108,9 @@ internal fun FolioViewer(
                         AndroidView(
                             modifier = Modifier.fillMaxSize(),
                             factory = { viewContext ->
-                                FolioZoomableImageFrame(viewContext).apply { bind(item) }
+                                FolioZoomableImageFrame(viewContext).apply { bind(item) { mediaReady = true } }
                             },
-                            update = { view -> view.bind(item) },
+                            update = { view -> view.bind(item) { mediaReady = true } },
                             onRelease = { view -> view.dispose() }
                         )
                     }
@@ -121,6 +143,23 @@ internal fun FolioViewer(
                                     .load(item.uri)
                                     .signature(ObjectKey("${item.dateAddedMillis}-${item.sizeBytes}"))
                                     .fitCenter()
+                                    .listener(object : RequestListener<Drawable> {
+                                        override fun onLoadFailed(
+                                            e: GlideException?, model: Any?, target: Target<Drawable>?,
+                                            isFirstResource: Boolean
+                                        ): Boolean {
+                                            mediaReady = true
+                                            return false
+                                        }
+
+                                        override fun onResourceReady(
+                                            resource: Drawable, model: Any, target: Target<Drawable>?,
+                                            dataSource: DataSource, isFirstResource: Boolean
+                                        ): Boolean {
+                                            mediaReady = true
+                                            return false
+                                        }
+                                    })
                                     .into(view)
                             }
                         )
@@ -158,7 +197,7 @@ private class FolioZoomableImageFrame(context: Context) : FrameLayout(context) {
         )
     }
 
-    fun bind(item: FolioMediaItem) {
+    fun bind(item: FolioMediaItem, onPreviewReady: () -> Unit) {
         if (boundUri == item.uri) return
         boundUri = item.uri
 
@@ -167,6 +206,23 @@ private class FolioZoomableImageFrame(context: Context) : FrameLayout(context) {
             .load(item.uri)
             .signature(ObjectKey("${item.uri}-${item.dateAddedMillis}-${item.sizeBytes}"))
             .fitCenter()
+            .listener(object : RequestListener<Drawable> {
+                override fun onLoadFailed(
+                    e: GlideException?, model: Any?, target: Target<Drawable>?,
+                    isFirstResource: Boolean
+                ): Boolean {
+                    onPreviewReady()
+                    return false
+                }
+
+                override fun onResourceReady(
+                    resource: Drawable, model: Any, target: Target<Drawable>?,
+                    dataSource: DataSource, isFirstResource: Boolean
+                ): Boolean {
+                    onPreviewReady()
+                    return false
+                }
+            })
             .into(preview)
 
         val signature = ObjectKey("${item.uri}-${item.dateAddedMillis}-${item.sizeBytes}")
