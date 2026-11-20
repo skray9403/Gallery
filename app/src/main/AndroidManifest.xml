@@ -53,6 +53,12 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         tools:replace="android:label">
+        <activity
+            android:name="org.fossify.gallery.ui.editor.FolioEditorActivity"
+            android:exported="false"
+            android:grantUriPermissions="true"
+            android:theme="@style/AppTheme.NoActionBar" />
+
 
         <activity
             android:name="org.fossify.gallery.ui.FolioActivity"

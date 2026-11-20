@@ -394,7 +394,7 @@ fun FolioApp(
                         onEdit = {
                             selectedMedia?.let { item ->
                                 val editIntent = Intent(Intent.ACTION_EDIT).apply {
-                                    setClassName(context, "org.fossify.gallery.activities.EditActivity")
+                                    setClassName(context, "org.fossify.gallery.ui.editor.FolioEditorActivity")
                                     setDataAndType(item.uri, item.mimeType)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                                 }
