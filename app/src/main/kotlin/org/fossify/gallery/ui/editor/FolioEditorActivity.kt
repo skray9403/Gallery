@@ -1,8 +1,15 @@
 package org.fossify.gallery.ui.editor
 
+import android.app.Activity
 import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Matrix
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,217 +18,163 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Flip
-import androidx.compose.material.icons.outlined.FlipCameraAndroid
 import androidx.compose.material.icons.outlined.RotateRight
-import androidx.compose.material.icons.outlined.Save
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialExpressiveTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.lifecycleScope
-import com.canhub.cropper.CropImageView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.fossify.gallery.ui.theme.FolioTheme
 
 class FolioEditorActivity : ComponentActivity() {
-    private var sourceUri: Uri? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        sourceUri = intent.data ?: intent.getParcelableExtra(Intent.EXTRA_STREAM)
-        val uri = sourceUri
-        if (uri == null) {
-            finish()
-            return
-        }
+        val uri = intent.data ?: intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+        if (uri == null) { finish(); return }
         setContent {
-            FolioTheme {
-                FolioEditorScreen(
-                    uri = uri,
-                    onBack = { finish() },
-                    onSave = { view, onBusy ->
-                        saveEditedImage(uri, view, onBusy)
-                    }
-                )
-            }
-        }
-    }
-
-    private fun saveEditedImage(
-        uri: Uri,
-        view: CropImageView?,
-        onBusy: (Boolean) -> Unit
-    ) {
-        if (view == null) return
-        onBusy(true)
-        lifecycleScope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) { view.getCroppedImage() }
-            }
-            val bitmap = result.getOrNull()
-            if (bitmap == null) {
-                onBusy(false)
-                Toast.makeText(this@FolioEditorActivity, "Could not crop this image", Toast.LENGTH_LONG).show()
-                return@launch
-            }
-            val saved = withContext(Dispatchers.IO) {
-                runCatching {
-                    contentResolver.openOutputStream(uri, "wt")?.use { output ->
-                        val format = when (contentResolver.getType(uri)?.lowercase()) {
-                            "image/png" -> Bitmap.CompressFormat.PNG
-                            "image/webp" -> Bitmap.CompressFormat.WEBP
-                            else -> Bitmap.CompressFormat.JPEG
-                        }
-                        bitmap.compress(format, 95, output)
-                    } ?: error("The selected image cannot be overwritten")
-                }
-            }
-            onBusy(false)
-            bitmap.recycle()
-            if (saved.isSuccess) {
-                Toast.makeText(this@FolioEditorActivity, "Image saved", Toast.LENGTH_SHORT).show()
-                setResult(RESULT_OK, Intent().setData(uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                finish()
-            } else {
-                Toast.makeText(this@FolioEditorActivity, saved.exceptionOrNull()?.message ?: "Could not save image", Toast.LENGTH_LONG).show()
+            org.fossify.gallery.ui.theme.FolioTheme {
+                FolioEditor(uri, onBack = { finish() }, onSaved = { result ->
+                    setResult(Activity.RESULT_OK, Intent().setData(result).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                    finish()
+                })
             }
         }
     }
 }
 
+private enum class Tool(val title: String) { LIGHT("Light"), CONTRAST("Contrast"), COLOUR("Colour"), CROP("Crop") }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FolioEditorScreen(
-    uri: Uri,
-    onBack: () -> Unit,
-    onSave: (CropImageView?, (Boolean) -> Unit) -> Unit
-) {
+private fun FolioEditor(source: Uri, onBack: () -> Unit, onSaved: (Uri) -> Unit) {
     val context = LocalContext.current
-    var cropView by remember(uri) { mutableStateOf<CropImageView?>(null) }
+    val scope = rememberCoroutineScope()
+    var bitmap by remember(source) { mutableStateOf<Bitmap?>(null) }
+    var loading by remember(source) { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
+    var tool by remember { mutableStateOf(Tool.LIGHT) }
+    var light by remember { mutableFloatStateOf(0f) }
+    var contrast by remember { mutableFloatStateOf(1f) }
+    var colour by remember { mutableFloatStateOf(1f) }
+    var crop by remember { mutableFloatStateOf(0f) }
+    var rotation by remember { mutableIntStateOf(0) }
+    var flip by remember { mutableStateOf(false) }
+
+    LaunchedEffect(source) {
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it) }
+            }.getOrNull()
+        }
+        loading = false
+    }
+
+    val previewMatrix = remember(light, contrast, colour) {
+        val c = contrast
+        val t = (1f - c) * 128f + light * 255f
+        val s = colour
+        val r = .213f * (1f - s); val g = .715f * (1f - s); val b = .072f * (1f - s)
+        ComposeColorMatrix(floatArrayOf(
+            (r+s)*c,g*c,b*c,0f,t, r*c,(g+s)*c,b*c,0f,t,
+            r*c,g*c,(b+s)*c,0f,t, 0f,0f,0f,1f,0f
+        ))
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Edit photo") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
-                    }
-                },
+                title = { Text("Edit photo", fontWeight = FontWeight.SemiBold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Back") } },
                 actions = {
-                    IconButton(
-                        enabled = !saving,
-                        onClick = { onSave(cropView) { saving = it } }
-                    ) {
-                        Icon(Icons.Outlined.Save, contentDescription = "Save")
-                    }
+                    IconButton(enabled = bitmap != null && !saving, onClick = {
+                        val original = bitmap ?: return@IconButton
+                        saving = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                saveImage(context, source, original, rotation, flip, light, contrast, colour, crop)
+                            }
+                            saving = false
+                            if (result != null) onSaved(result)
+                            else Toast.makeText(context, "Could not save image", Toast.LENGTH_LONG).show()
+                        }
+                    }) { Icon(Icons.Outlined.Check, "Save") }
                 }
             )
         },
         bottomBar = {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    FilledTonalButton(
-                        modifier = Modifier.weight(1f),
-                        enabled = !saving,
-                        onClick = { cropView?.rotateImage(90) }
-                    ) {
-                        Icon(Icons.Outlined.RotateRight, contentDescription = null)
-                        Spacer(Modifier.size(8.dp))
-                        Text("Rotate")
-                    }
-                    FilledTonalButton(
-                        modifier = Modifier.weight(1f),
-                        enabled = !saving,
-                        onClick = { cropView?.flipImageHorizontally() }
-                    ) {
-                        Icon(Icons.Outlined.Flip, contentDescription = null)
-                        Spacer(Modifier.size(8.dp))
-                        Text("Flip")
-                    }
-                    FilledTonalButton(
-                        modifier = Modifier.weight(1f),
-                        enabled = !saving,
-                        onClick = { cropView?.flipImageVertically() }
-                    ) {
-                        Icon(Icons.Outlined.FlipCameraAndroid, contentDescription = null)
-                        Spacer(Modifier.size(8.dp))
-                        Text("Vertical")
-                    }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                Text(when(tool) {
+                    Tool.LIGHT -> "Brightness"
+                    Tool.CONTRAST -> "Contrast"
+                    Tool.COLOUR -> "Saturation"
+                    Tool.CROP -> "Crop"
+                }, style = MaterialTheme.typography.labelLarge)
+                Slider(
+                    value = when(tool) { Tool.LIGHT -> light; Tool.CONTRAST -> contrast; Tool.COLOUR -> colour; Tool.CROP -> crop },
+                    onValueChange = { v -> when(tool) { Tool.LIGHT -> light=v; Tool.CONTRAST -> contrast=v; Tool.COLOUR -> colour=v; Tool.CROP -> crop=v } },
+                    valueRange = when(tool) { Tool.LIGHT -> -.5f.. .5f; Tool.CONTRAST, Tool.COLOUR -> 0f..2f; Tool.CROP -> 0f.. .3f }
+                )
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Tool.entries.forEach { FilledTonalButton(onClick = { tool=it }) { Text(it.title) } }
+                    FilledTonalButton(onClick = { rotation=(rotation+90)%360 }) { Icon(Icons.Outlined.RotateRight, null); Text("Rotate") }
+                    FilledTonalButton(onClick = { flip=!flip }) { Icon(Icons.Outlined.Flip, null); Text("Flip") }
                 }
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !saving,
-                    onClick = { onSave(cropView) { saving = it } }
-                ) {
-                    if (saving) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.size(10.dp))
-                        Text("Saving")
-                    } else {
-                        Icon(Icons.Outlined.Save, contentDescription = null)
-                        Spacer(Modifier.size(10.dp))
-                        Text("Save changes")
-                    }
-                }
+                TextButton(onClick = { light=0f; contrast=1f; colour=1f; crop=0f; rotation=0; flip=false }) { Text("Reset") }
             }
         }
-    ) { padding ->
-        Box(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { viewContext ->
-                    CropImageView(viewContext).apply {
-                        guidelines = CropImageView.Guidelines.ON
-                        setImageUriAsync(uri)
-                        cropView = this
-                    }
-                },
-                update = { cropView = it }
-            )
+    ) { insets ->
+        Box(Modifier.fillMaxSize().padding(insets).background(Color.Black), contentAlignment = Alignment.Center) {
+            when {
+                loading -> CircularProgressIndicator()
+                bitmap == null -> Text("Unable to open this image", color=Color.White)
+                else -> Image(bitmap!!.asImageBitmap(), "Photo preview", Modifier.fillMaxSize().padding(12.dp), contentScale=ContentScale.Fit, colorFilter=ColorFilter.colorMatrix(previewMatrix))
+            }
+            if (saving) Surface(Modifier.align(Alignment.Center), shape=RoundedCornerShape(24.dp)) { Text("Saving…", Modifier.padding(20.dp)) }
         }
     }
 }
+
+private fun saveImage(
+    context: android.content.Context, source: Uri, preview: Bitmap, rotation: Int, flip: Boolean,
+    light: Float, contrast: Float, saturation: Float, crop: Float
+): Uri? = runCatching {
+    val original = context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it) } ?: preview
+    val transform = Matrix().apply { postScale(if(flip) -1f else 1f,1f); postRotate(rotation.toFloat()) }
+    val rotated = Bitmap.createBitmap(original,0,0,original.width,original.height,transform,true)
+    val dx=(rotated.width*crop).toInt().coerceIn(0,rotated.width/3)
+    val dy=(rotated.height*crop).toInt().coerceIn(0,rotated.height/3)
+    val clipped=Bitmap.createBitmap(rotated,dx,dy,(rotated.width-2*dx).coerceAtLeast(1),(rotated.height-2*dy).coerceAtLeast(1))
+    val c=contrast; val offset=(1f-c)*128f+light*255f
+    val s=saturation; val r=.213f*(1f-s); val g=.715f*(1f-s); val b=.072f*(1f-s)
+    val cm=ColorMatrix(floatArrayOf((r+s)*c,g*c,b*c,0f,offset,r*c,(g+s)*c,b*c,0f,offset,r*c,g*c,(b+s)*c,0f,offset,0f,0f,0f,1f,0f))
+    val out=Bitmap.createBitmap(clipped.width,clipped.height,Bitmap.Config.ARGB_8888)
+    Canvas(out).drawBitmap(clipped,0f,0f,Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter=ColorMatrixColorFilter(cm) })
+    val values=ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME,"Folio_${System.currentTimeMillis()}.jpg")
+        put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg")
+        if(Build.VERSION.SDK_INT>=29) put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/Folio")
+    }
+    val target=context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values) ?: error("Insert failed")
+    context.contentResolver.openOutputStream(target)?.use { out.compress(Bitmap.CompressFormat.JPEG,95,it) } ?: error("Write failed")
+    target
+}.getOrNull()
