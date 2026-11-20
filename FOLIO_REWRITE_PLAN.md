@@ -24,8 +24,8 @@ Folio takes these as design and motion principles, not as a copied mail UI. Its 
 
 ## Migration stages
 
-1. **Foundation (this commit):** new Folio identity, Compose compiler/dependencies, expressive theme and motion tokens, Compose activity/launcher path, initial Photos/Albums shell, and GitHub Actions verification of both flavors.
-2. **Media domain:** permission model, MediaStore/SAF access, repository and paging, folder discovery, thumbnail cache, formats and metadata.
+1. **Foundation:** new Folio identity, Compose compiler/dependencies, expressive theme and motion tokens, Compose activity/launcher path, initial Photos/Albums shell, and GitHub Actions verification of both flavors.
+2. **Media domain:** permission-aware MediaStore querying, mixed photo/video models, album grouping, and a Picasso thumbnail bridge are now implemented. SAF paging, background indexing, and format-specific thumbnail validation remain.
 3. **Library UI:** photo grid, date grouping, albums, sorting, filtering, search, multi-select and favorites.
 4. **Viewer:** full-screen image viewer, zoom/pan, GIF/APNG/WebP, HDR-aware rendering, video via Media3, and sharing.
 5. **Editing and file operations:** crop, rotate, resize, filters, EXIF, delete/restore, wallpaper and file operations.

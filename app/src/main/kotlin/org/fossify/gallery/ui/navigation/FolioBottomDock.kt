@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -22,10 +24,6 @@ import androidx.compose.ui.unit.dp
 import org.fossify.gallery.ui.FolioTab
 import org.fossify.gallery.ui.theme.FolioMotion
 
-/**
- * A single floating navigation surface, following the persistent-dock approach
- * used in MonoMail while using stock Material 3 NavigationBar items.
- */
 @Composable
 internal fun FolioBottomDock(
     selectedTab: FolioTab,
@@ -34,34 +32,25 @@ internal fun FolioBottomDock(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-            .animateContentSize(
-                animationSpec = FolioMotion.gentle<IntSize>()
-            ),
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .animateContentSize(animationSpec = FolioMotion.gentle<IntSize>()),
         shape = RoundedCornerShape(32.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 2.dp,
         shadowElevation = 4.dp
     ) {
-        NavigationBar(
-            containerColor = Color.Transparent,
-            tonalElevation = 0.dp
-        ) {
+        NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
             FolioTab.entries.forEach { tab ->
                 val icon = when (tab) {
                     FolioTab.PHOTOS -> Icons.Outlined.PhotoLibrary
                     FolioTab.ALBUMS -> Icons.Outlined.FolderOpen
+                    FolioTab.FAVORITES -> Icons.Outlined.Star
+                    FolioTab.SETTINGS -> Icons.Outlined.Settings
                 }
-
                 NavigationBarItem(
                     selected = selectedTab == tab,
                     onClick = { onTabSelected(tab) },
-                    icon = {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = tab.label
-                        )
-                    },
+                    icon = { Icon(icon, contentDescription = tab.label) },
                     label = { Text(tab.label) },
                     alwaysShowLabel = false,
                     colors = NavigationBarItemDefaults.colors(

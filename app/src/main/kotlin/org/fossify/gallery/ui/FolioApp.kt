@@ -1,5 +1,12 @@
 package org.fossify.gallery.ui
 
+import android.content.Context
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,102 +20,188 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.fossify.gallery.ui.data.FolioMediaItem
+import org.fossify.gallery.ui.data.FolioMediaRepository
 import org.fossify.gallery.ui.home.FolioHomeScreen
 import org.fossify.gallery.ui.navigation.FolioBottomDock
 import org.fossify.gallery.ui.theme.FolioMotion
 import org.fossify.gallery.ui.theme.FolioTheme
 
+class FolioActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent { FolioApp() }
+    }
+}
+
 @Composable
 fun FolioApp() {
+    val context = LocalContext.current
+    val preferences = remember(context) {
+        context.getSharedPreferences("folio_preferences", Context.MODE_PRIVATE)
+    }
     var selectedTabName by rememberSaveable { mutableStateOf(FolioTab.PHOTOS.name) }
+    var selectedMedia by remember { mutableStateOf<FolioMediaItem?>(null) }
+    var mediaItems by remember { mutableStateOf<List<FolioMediaItem>>(emptyList()) }
+    var hasAccess by remember { mutableStateOf(FolioMediaRepository.hasMediaAccess(context)) }
+    var isLoading by remember { mutableStateOf(false) }
+    var refreshKey by remember { mutableStateOf(0) }
+    var searchText by rememberSaveable { mutableStateOf("") }
+    var showSearch by rememberSaveable { mutableStateOf(false) }
+    var showVideos by rememberSaveable { mutableStateOf(preferences.getBoolean("show_videos", true)) }
+    var favorites by remember {
+        mutableStateOf(preferences.getStringSet("favorites", emptySet()).orEmpty().toSet())
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        hasAccess = FolioMediaRepository.hasMediaAccess(context)
+        refreshKey++
+    }
+
+    LaunchedEffect(hasAccess, refreshKey) {
+        if (hasAccess) {
+            isLoading = true
+            mediaItems = withContext(Dispatchers.IO) {
+                FolioMediaRepository.loadMedia(context)
+            }
+            isLoading = false
+        } else {
+            mediaItems = emptyList()
+        }
+    }
+
     val selectedTab = FolioTab.valueOf(selectedTabName)
+    val visibleItems = if (showVideos) mediaItems else mediaItems.filterNot(FolioMediaItem::isVideo)
+    val favoriteItems = visibleItems.filter { it.uri.toString() in favorites }
 
     FolioTheme {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.surface,
-            bottomBar = {
-                FolioBottomDock(
-                    selectedTab = selectedTab,
-                    onTabSelected = { selectedTabName = it.name }
-                )
-            }
-        ) { contentPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(contentPadding)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 22.dp),
-                    verticalAlignment = Alignment.CenterVertically
+        if (selectedMedia != null) {
+            FolioViewer(
+                item = selectedMedia!!,
+                isFavorite = selectedMedia!!.uri.toString() in favorites,
+                onClose = { selectedMedia = null },
+                onToggleFavorite = {
+                    val key = selectedMedia!!.uri.toString()
+                    favorites = if (key in favorites) favorites - key else favorites + key
+                    preferences.edit().putStringSet("favorites", favorites).apply()
+                }
+            )
+        } else {
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.surface,
+                bottomBar = {
+                    FolioBottomDock(
+                        selectedTab = selectedTab,
+                        onTabSelected = { selectedTabName = it.name }
+                    )
+                }
+            ) { contentPadding ->
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(contentPadding)
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "Folio",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Your visual library",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 24.dp, end = 16.dp, top = 18.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Folio",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Your visual library",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (selectedTab != FolioTab.SETTINGS) {
+                            IconButton(onClick = { showSearch = !showSearch; searchText = "" }) {
+                                Icon(Icons.Outlined.Search, contentDescription = "Search media")
+                            }
+                            IconButton(onClick = { refreshKey++ }) {
+                                Icon(Icons.Outlined.Refresh, contentDescription = "Refresh library")
+                            }
+                        }
+                    }
+
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        modifier = Modifier.weight(1f),
+                        transitionSpec = {
+                            (
+                                fadeIn(animationSpec = FolioMotion.contentEnter) +
+                                    slideInVertically(animationSpec = FolioMotion.screenSlide()) { it / 24 }
+                            ) togetherWith (
+                                fadeOut(animationSpec = FolioMotion.contentExit) +
+                                    slideOutVertically(animationSpec = FolioMotion.screenSlide()) { -it / 24 }
+                            )
+                        },
+                        label = "folio-root-tab"
+                    ) { tab ->
+                        FolioHomeScreen(
+                            tab = tab,
+                            items = visibleItems,
+                            favoriteItems = favoriteItems,
+                            hasAccess = hasAccess,
+                            isLoading = isLoading,
+                            searchText = searchText,
+                            showSearch = showSearch,
+                            showVideos = showVideos,
+                            onSearchTextChanged = { searchText = it },
+                            onRequestAccess = {
+                                permissionLauncher.launch(FolioMediaRepository.permissionsToRequest())
+                            },
+                            onMediaClick = { selectedMedia = it },
+                            onToggleFavorite = { item ->
+                                val key = item.uri.toString()
+                                favorites = if (key in favorites) favorites - key else favorites + key
+                                preferences.edit().putStringSet("favorites", favorites).apply()
+                            },
+                            onShowVideosChanged = {
+                                showVideos = it
+                                preferences.edit().putBoolean("show_videos", it).apply()
+                            },
+                            onRefresh = { refreshKey++ }
                         )
                     }
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-
-                AnimatedContent(
-                    targetState = selectedTab,
-                    modifier = Modifier.weight(1f),
-                    transitionSpec = {
-                        (
-                            fadeIn(animationSpec = FolioMotion.contentEnter) +
-                                slideInVertically(
-                                    animationSpec = FolioMotion.screenSlide()
-                                ) { height -> height / 24 }
-                            ) togetherWith (
-                            fadeOut(animationSpec = FolioMotion.contentExit) +
-                                slideOutVertically(
-                                    animationSpec = FolioMotion.screenSlide()
-                                ) { height -> -height / 24 }
-                            )
-                    },
-                    label = "folio-root-tab"
-                ) { tab ->
-                    FolioHomeScreen(tab = tab)
                 }
             }
         }
     }
 }
 
-internal enum class FolioTab(
-    val label: String,
-    val heading: String,
-    val description: String
-) {
-    PHOTOS(
-        label = "Photos",
-        heading = "Your moments, in one place",
-        description = "The new Compose foundation is in place. Media indexing, thumbnails and the full-screen viewer are the next migration stage."
-    ),
-    ALBUMS(
-        label = "Albums",
-        heading = "Your folders are next",
-        description = "Album discovery, folder rules and sorting are being moved into Folio's new data layer."
-    )
+internal enum class FolioTab(val label: String) {
+    PHOTOS("Photos"),
+    ALBUMS("Albums"),
+    FAVORITES("Favorites"),
+    SETTINGS("Settings")
 }
