@@ -55,9 +55,23 @@
         tools:replace="android:label">
         <activity
             android:name="org.fossify.gallery.ui.editor.FolioEditorActivity"
-            android:exported="false"
+            android:exported="true"
             android:grantUriPermissions="true"
-            android:theme="@style/AppTheme.NoActionBar" />
+            android:label="@string/basic_editor"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.android.camera.action.CROP" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
 
 
         <activity
@@ -177,23 +191,7 @@
 
 
 
-        <activity
-            android:name="org.fossify.gallery.ui.editor.FolioEditorActivity"
-            android:exported="true"
-            android:label="@string/basic_editor">
-            <intent-filter>
-                <action android:name="android.intent.action.EDIT" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="com.android.camera.action.CROP" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="content" />
-                <data android:scheme="file" />
-                <data android:mimeType="image/*" />
-            </intent-filter>
-        </activity>
+
 
         <activity
             android:name=".activities.PhotoVideoActivity"
