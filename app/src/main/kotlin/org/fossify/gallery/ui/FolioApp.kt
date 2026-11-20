@@ -1,5 +1,6 @@
 package org.fossify.gallery.ui
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ClipData
 import android.content.Context
@@ -90,6 +91,7 @@ import org.fossify.gallery.ui.theme.FolioTheme
 import org.json.JSONArray
 import org.json.JSONObject
 
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @OptIn(ExperimentalActivityApi::class)
 @Composable
 fun FolioApp(
@@ -407,17 +409,20 @@ fun FolioApp(
                 containerColor = if (selectedMedia != null) Color.Black
                     else MaterialTheme.colorScheme.surface,
                 contentWindowInsets = WindowInsets(0, 0, 0, 0)
-            ) { _ ->
+            ) { contentPadding ->
                 if (selectedMedia != null) {
                     FolioViewer(
                         item = selectedMedia!!,
                         backProgress = predictiveBackProgress,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(contentPadding)
                     )
                 } else {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
+                            .padding(contentPadding)
                             .statusBarsPadding()
                             .nestedScroll(nestedScrollConnection)
                     ) {
