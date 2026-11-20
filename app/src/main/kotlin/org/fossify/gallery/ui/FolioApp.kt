@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Refresh
@@ -72,9 +73,10 @@ import org.json.JSONObject
 fun FolioApp(
     pickerMode: Boolean = false,
     pickerMimeType: String? = null,
+    allowMultiple: Boolean = false,
     initialUri: Uri? = null,
     launchRevision: Int = 0,
-    onMediaPicked: (Uri) -> Unit = {}
+    onMediaPicked: (List<Uri>) -> Unit = {}
 ) {
     val context = LocalContext.current
     val preferences = remember(context) {
@@ -276,9 +278,15 @@ fun FolioApp(
         }
     }
 
-    LaunchedEffect(launchRevision, pickerMode, pickerMimeType) {
+    LaunchedEffect(launchRevision, pickerMode, pickerMimeType, allowMultiple) {
         selectedUris = emptySet()
-        if (pickerMode || initialUri == null) {
+        showTrashConfirmation = false
+        if (pickerMode) {
+            selectedMedia = null
+            selectedTabName = FolioTab.PHOTOS.name
+            searchText = ""
+            showSearch = false
+        } else if (initialUri == null) {
             selectedMedia = null
         }
     }
@@ -368,10 +376,12 @@ fun FolioApp(
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.surface,
                 bottomBar = {
-                    FolioBottomDock(
-                        selectedTab = selectedTab,
-                        onTabSelected = { selectedTabName = it.name }
-                    )
+                    if (!pickerMode) {
+                        FolioBottomDock(
+                            selectedTab = selectedTab,
+                            onTabSelected = { selectedTabName = it.name }
+                        )
+                    }
                 }
             ) { contentPadding ->
                 Column(
@@ -405,47 +415,56 @@ fun FolioApp(
                         }
                         Spacer(modifier = Modifier.weight(1f))
                         if (selectedUris.isNotEmpty()) {
-                            if (selectedTab == FolioTab.TRASH) {
-                                IconButton(onClick = {
-                                    if (Build.VERSION.SDK_INT >= 30 && selectedItems.isNotEmpty()) {
-                                        val pendingIntent = MediaStore.createTrashRequest(
-                                            context.contentResolver,
-                                            selectedItems.map { it.uri },
-                                            false
-                                        )
-                                        restoreRequestLauncher.launch(
-                                            IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                                        )
-                                    }
-                                }) {
-                                    Icon(Icons.Outlined.Restore, contentDescription = "Restore selected")
+                            if (pickerMode) {
+                                IconButton(
+                                    onClick = { onMediaPicked(selectedItems.map { it.uri }) },
+                                    enabled = selectedItems.isNotEmpty()
+                                ) {
+                                    Icon(Icons.Outlined.Check, contentDescription = "Use selected media")
                                 }
                             } else {
-                                IconButton(onClick = {
-                                    val selectedKeys = selectedItems.map { it.uri.toString() }.toSet()
-                                    val allAlreadyFavorite = selectedKeys.isNotEmpty() &&
-                                        selectedKeys.all { it in favorites }
-                                    favorites = if (allAlreadyFavorite) {
-                                        favorites - selectedKeys
-                                    } else {
-                                        favorites + selectedKeys
+                                if (selectedTab == FolioTab.TRASH) {
+                                    IconButton(onClick = {
+                                        if (Build.VERSION.SDK_INT >= 30 && selectedItems.isNotEmpty()) {
+                                            val pendingIntent = MediaStore.createTrashRequest(
+                                                context.contentResolver,
+                                                selectedItems.map { it.uri },
+                                                false
+                                            )
+                                            restoreRequestLauncher.launch(
+                                                IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                                            )
+                                        }
+                                    }) {
+                                        Icon(Icons.Outlined.Restore, contentDescription = "Restore selected")
                                     }
-                                    preferences.edit().putStringSet("favorites", favorites).apply()
-                                    selectedUris = emptySet()
-                                }) {
-                                    Icon(Icons.Outlined.Star, contentDescription = "Toggle selected favorites")
+                                } else {
+                                    IconButton(onClick = {
+                                        val selectedKeys = selectedItems.map { it.uri.toString() }.toSet()
+                                        val allAlreadyFavorite = selectedKeys.isNotEmpty() &&
+                                            selectedKeys.all { it in favorites }
+                                        favorites = if (allAlreadyFavorite) {
+                                            favorites - selectedKeys
+                                        } else {
+                                            favorites + selectedKeys
+                                        }
+                                        preferences.edit().putStringSet("favorites", favorites).apply()
+                                        selectedUris = emptySet()
+                                    }) {
+                                        Icon(Icons.Outlined.Star, contentDescription = "Toggle selected favorites")
+                                    }
+                                    IconButton(onClick = { showTrashConfirmation = true }) {
+                                        Icon(Icons.Outlined.Delete, contentDescription = "Move selected to trash")
+                                    }
                                 }
-                                IconButton(onClick = { showTrashConfirmation = true }) {
-                                    Icon(Icons.Outlined.Delete, contentDescription = "Move selected to trash")
+                                IconButton(onClick = shareSelected) {
+                                    Icon(Icons.Outlined.Share, contentDescription = "Share selected")
                                 }
-                            }
-                            IconButton(onClick = shareSelected) {
-                                Icon(Icons.Outlined.Share, contentDescription = "Share selected")
                             }
                             IconButton(onClick = { selectedUris = emptySet() }) {
                                 Icon(Icons.Outlined.Close, contentDescription = "Clear selection")
                             }
-                        } else if (selectedTab != FolioTab.SETTINGS && selectedTab != FolioTab.TRASH) {
+                        } else if (!pickerMode && selectedTab != FolioTab.SETTINGS && selectedTab != FolioTab.TRASH) {
                             IconButton(onClick = { showSearch = !showSearch; searchText = "" }) {
                                 Icon(Icons.Outlined.Search, contentDescription = "Search media")
                             }
@@ -487,20 +506,18 @@ fun FolioApp(
                             },
                             selectedUris = selectedUris,
                             onMediaClick = {
-                                if (pickerMode) {
-                                    onMediaPicked(it.uri)
-                                } else if (selectedUris.isEmpty()) {
-                                    selectedMedia = it
+                                if (pickerMode && !allowMultiple) {
+                                    onMediaPicked(listOf(it.uri))
+                                } else if (pickerMode || selectedUris.isNotEmpty()) {
+                                    selectedUris = selectedUris + it.uri.toString()
                                 } else {
-                                    selectedUris = if (it.uri.toString() in selectedUris) {
-                                        selectedUris - it.uri.toString()
-                                    } else {
-                                        selectedUris + it.uri.toString()
-                                    }
+                                    selectedMedia = it
                                 }
                             },
                             onMediaLongClick = {
-                                if (!pickerMode) selectedUris = selectedUris + it.uri.toString()
+                                if (!pickerMode || allowMultiple) {
+                                    selectedUris = selectedUris + it.uri.toString()
+                                }
                             },
                             onToggleSelection = { item ->
                                 selectedUris = if (item.uri.toString() in selectedUris) {

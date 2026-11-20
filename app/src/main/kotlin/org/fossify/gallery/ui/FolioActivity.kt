@@ -1,6 +1,7 @@
 package org.fossify.gallery.ui
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -31,16 +32,30 @@ class FolioActivity : ComponentActivity() {
             FolioApp(
                 pickerMode = request.pickerMode,
                 pickerMimeType = request.mimeType,
+                allowMultiple = request.allowMultiple,
                 initialUri = request.initialUri,
                 launchRevision = request.revision,
-                onMediaPicked = { uri ->
-                    setResult(
-                        Activity.RESULT_OK,
-                        Intent().apply {
-                            data = uri
+                onMediaPicked = { uris ->
+                    if (uris.isNotEmpty()) {
+                        val resultIntent = Intent().apply {
+                            data = uris.first()
+                            val clip = ClipData.newUri(
+                                contentResolver,
+                                "Folio selected media",
+                                uris.first()
+                            )
+                            uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+                            clipData = clip
+                            putParcelableArrayListExtra(
+                                Intent.EXTRA_STREAM,
+                                ArrayList(uris)
+                            )
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                    )
+                        setResult(Activity.RESULT_OK, resultIntent)
+                    } else {
+                        setResult(Activity.RESULT_CANCELED)
+                    }
                     finish()
                 }
             )
@@ -60,6 +75,8 @@ class FolioActivity : ComponentActivity() {
         launchRequest = FolioLaunchRequest(
             pickerMode = pickerMode,
             mimeType = if (pickerMode) intent?.type else null,
+            allowMultiple = pickerMode &&
+                intent?.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false) == true,
             initialUri = intent?.data.takeIf { action == Intent.ACTION_VIEW },
             revision = launchRevision
         )
@@ -69,6 +86,7 @@ class FolioActivity : ComponentActivity() {
 private data class FolioLaunchRequest(
     val pickerMode: Boolean = false,
     val mimeType: String? = null,
+    val allowMultiple: Boolean = false,
     val initialUri: Uri? = null,
     val revision: Int = 0
 )
