@@ -146,12 +146,17 @@ internal fun FolioHomeScreen(
                             }
                         }
                         val albumItems = items.filter { (it.bucketId ?: it.bucketName) == chosenAlbum.id }
-                        FolioMediaGrid(albumItems, onMediaClick, onToggleFavorite, false)
+                        FolioMediaGrid(
+                            items = albumItems,
+                            onMediaClick = onMediaClick,
+                            onToggleFavorite = onToggleFavorite,
+                            onRestore = onRestore,
+                            showFavoriteActions = false,
+                            showRestoreActions = false
+                        )
                     }
                 }
             }
-            FolioTab.TRASH -> Unit
-            FolioTab.TRASH -> Unit
             FolioTab.SETTINGS -> Unit
         }
     }
