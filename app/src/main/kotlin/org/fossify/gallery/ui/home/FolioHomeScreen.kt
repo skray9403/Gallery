@@ -1,8 +1,7 @@
 package org.fossify.gallery.ui.home
 
-import android.widget.ImageView
 import android.graphics.drawable.ColorDrawable
-import androidx.compose.foundation.background
+import android.widget.ImageView
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,13 +24,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,6 +69,7 @@ internal fun FolioHomeScreen(
     searchText: String,
     showSearch: Boolean,
     showVideos: Boolean,
+    themeMode: String,
     onSearchTextChanged: (String) -> Unit,
     onRequestAccess: () -> Unit,
     selectedUris: Set<String>,
@@ -78,11 +79,23 @@ internal fun FolioHomeScreen(
     onRestore: (FolioMediaItem) -> Unit,
     onToggleFavorite: (FolioMediaItem) -> Unit,
     onShowVideosChanged: (Boolean) -> Unit,
+    onThemeModeChanged: (String) -> Unit,
+    onExportSettings: () -> Unit,
+    onImportSettings: () -> Unit,
+    onHideFolder: () -> Unit,
     onRefresh: () -> Unit
 ) {
     var selectedAlbumId by remember(tab) { mutableStateOf<String?>(null) }
     if (tab == FolioTab.SETTINGS) {
-        FolioSettings(showVideos, onShowVideosChanged)
+        FolioSettings(
+            showVideos = showVideos,
+            themeMode = themeMode,
+            onShowVideosChanged = onShowVideosChanged,
+            onThemeModeChanged = onThemeModeChanged,
+            onExportSettings = onExportSettings,
+            onImportSettings = onImportSettings,
+            onHideFolder = onHideFolder
+        )
         return
     }
     if (!hasAccess) {
@@ -385,11 +398,30 @@ private fun FolioThumbnail(item: FolioMediaItem, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun FolioSettings(showVideos: Boolean, onShowVideosChanged: (Boolean) -> Unit) {
+private fun FolioSettings(
+    showVideos: Boolean,
+    onShowVideosChanged: (Boolean) -> Unit,
+    themeMode: String,
+    onThemeModeChanged: (String) -> Unit,
+    onExportSettings: () -> Unit,
+    onImportSettings: () -> Unit,
+    onHideFolder: () -> Unit
+) {
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Text("Appearance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("SYSTEM" to "System", "LIGHT" to "Light", "DARK" to "Dark").forEach { (value, label) ->
+                FilterChip(
+                    selected = themeMode == value,
+                    onClick = { onThemeModeChanged(value) },
+                    label = { Text(label) }
+                )
+            }
+        }
+
         Text("Library", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(24.dp)) {
             Row(
@@ -403,9 +435,27 @@ private fun FolioSettings(showVideos: Boolean, onShowVideosChanged: (Boolean) ->
                 Switch(checked = showVideos, onCheckedChange = onShowVideosChanged)
             }
         }
+
+        Text("Storage and backup", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Text(
-            "Folio uses fresh app-private preferences. Your original Gallery installation is not changed.",
-            style = MaterialTheme.typography.bodyMedium,
+            "Hide a folder from media scanners by creating an empty .nomedia file in it. This also hides it from other gallery apps.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(onClick = onHideFolder, modifier = Modifier.fillMaxWidth()) {
+            Text("Hide a folder from media scanners")
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onExportSettings, modifier = Modifier.weight(1f)) {
+                Text("Export settings")
+            }
+            Button(onClick = onImportSettings, modifier = Modifier.weight(1f)) {
+                Text("Import settings")
+            }
+        }
+        Text(
+            "Exports include Folio preferences and favorite URI references. They do not copy the media files themselves. Folio starts with fresh private data; your original Gallery installation is not changed.",
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }

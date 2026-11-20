@@ -1,9 +1,15 @@
 package org.fossify.gallery.ui
 
 import android.app.Activity
+import android.content.ContentObserver
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,11 +27,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,6 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.ui.data.FolioMediaItem
@@ -53,6 +61,8 @@ import org.fossify.gallery.ui.home.FolioHomeScreen
 import org.fossify.gallery.ui.navigation.FolioBottomDock
 import org.fossify.gallery.ui.theme.FolioMotion
 import org.fossify.gallery.ui.theme.FolioTheme
+import org.json.JSONArray
+import org.json.JSONObject
 
 @Composable
 fun FolioApp() {
@@ -69,7 +79,10 @@ fun FolioApp() {
     var refreshKey by remember { mutableStateOf(0) }
     var searchText by rememberSaveable { mutableStateOf("") }
     var showSearch by rememberSaveable { mutableStateOf(false) }
-    var showVideos by rememberSaveable { mutableStateOf(preferences.getBoolean("show_videos", true)) }
+    var showVideos by remember { mutableStateOf(preferences.getBoolean("show_videos", true)) }
+    var themeMode by remember {
+        mutableStateOf(preferences.getString("theme_mode", "SYSTEM") ?: "SYSTEM")
+    }
     var favorites by remember {
         mutableStateOf(preferences.getStringSet("favorites", emptySet()).orEmpty().toSet())
     }
@@ -88,6 +101,105 @@ fun FolioApp() {
     ) {
         hasAccess = FolioMediaRepository.hasMediaAccess(context)
         refreshKey++
+    }
+
+    val hideFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri ->
+        if (treeUri != null) {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(treeUri, flags)
+            }
+            val folder = DocumentFile.fromTreeUri(context, treeUri)
+            val marker = folder?.findFile(".nomedia") ?: folder?.createFile("text/plain", ".nomedia")
+            val message = when {
+                marker != null -> "Folder hidden from media scanners"
+                else -> "This folder provider does not allow creating .nomedia"
+            }
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            refreshKey++
+        }
+    }
+
+    val exportSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { destination ->
+        if (destination != null) {
+            val exportResult = runCatching {
+                val payload = JSONObject()
+                    .put("format", "folio-settings")
+                    .put("version", 1)
+                    .put("showVideos", showVideos)
+                    .put("themeMode", themeMode)
+                    .put("favorites", JSONArray(favorites.toList()))
+                val output = context.contentResolver.openOutputStream(destination)
+                    ?: error("Unable to open the selected destination")
+                output.bufferedWriter().use { writer -> writer.write(payload.toString(2)) }
+            }
+            Toast.makeText(
+                context,
+                if (exportResult.isSuccess) "Folio settings exported" else "Could not export settings",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    val importSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { source ->
+        if (source != null) {
+            val importResult = runCatching {
+                val jsonText = context.contentResolver.openInputStream(source)
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    ?: error("Unable to read the selected file")
+                val payload = JSONObject(jsonText)
+                require(payload.optString("format") == "folio-settings") {
+                    "This is not a Folio settings file"
+                }
+                val importedFavorites = buildSet {
+                    val array = payload.optJSONArray("favorites") ?: JSONArray()
+                    for (index in 0 until array.length()) {
+                        add(array.getString(index))
+                    }
+                }
+                val importedShowVideos = payload.optBoolean("showVideos", true)
+                val importedTheme = payload.optString("themeMode", "SYSTEM")
+                    .uppercase()
+                    .takeIf { it in setOf("SYSTEM", "LIGHT", "DARK") } ?: "SYSTEM"
+
+                favorites = importedFavorites
+                showVideos = importedShowVideos
+                themeMode = importedTheme
+                preferences.edit()
+                    .putStringSet("favorites", importedFavorites)
+                    .putBoolean("show_videos", importedShowVideos)
+                    .putString("theme_mode", importedTheme)
+                    .apply()
+            }
+            Toast.makeText(
+                context,
+                if (importResult.isSuccess) "Folio settings imported" else
+                    "Could not import settings: ${importResult.exceptionOrNull()?.message.orEmpty()}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    DisposableEffect(context) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                refreshKey++
+            }
+        }
+        val imageUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val videoUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        context.contentResolver.registerContentObserver(imageUri, true, observer)
+        context.contentResolver.registerContentObserver(videoUri, true, observer)
+        onDispose {
+            context.contentResolver.unregisterContentObserver(observer)
+        }
     }
 
     LaunchedEffect(hasAccess, refreshKey) {
@@ -109,17 +221,20 @@ fun FolioApp() {
     val visibleItems = if (showVideos) mediaItems else mediaItems.filterNot(FolioMediaItem::isVideo)
     val favoriteItems = visibleItems.filter { it.uri.toString() in favorites }
 
-    FolioTheme {
+    FolioTheme(themeMode = themeMode) {
         if (selectedMedia != null) {
             FolioViewer(
                 item = selectedMedia!!,
                 isFavorite = selectedMedia!!.uri.toString() in favorites,
                 onClose = { selectedMedia = null },
                 onEdit = {
-                    val editIntent = android.content.Intent(android.content.Intent.ACTION_EDIT).apply {
+                    val editIntent = Intent(Intent.ACTION_EDIT).apply {
                         setClassName(context, "org.fossify.gallery.activities.EditActivity")
                         setDataAndType(selectedMedia!!.uri, selectedMedia!!.mimeType)
-                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                        addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
                     }
                     context.startActivity(editIntent)
                 },
@@ -218,6 +333,7 @@ fun FolioApp() {
                             searchText = searchText,
                             showSearch = showSearch,
                             showVideos = showVideos,
+                            themeMode = themeMode,
                             onSearchTextChanged = { searchText = it },
                             onRequestAccess = {
                                 permissionLauncher.launch(FolioMediaRepository.permissionsToRequest())
@@ -250,6 +366,19 @@ fun FolioApp() {
                             onShowVideosChanged = {
                                 showVideos = it
                                 preferences.edit().putBoolean("show_videos", it).apply()
+                            },
+                            onThemeModeChanged = {
+                                themeMode = it
+                                preferences.edit().putString("theme_mode", it).apply()
+                            },
+                            onExportSettings = {
+                                exportSettingsLauncher.launch("folio-settings.json")
+                            },
+                            onImportSettings = {
+                                importSettingsLauncher.launch(arrayOf("application/json", "text/*"))
+                            },
+                            onHideFolder = {
+                                hideFolderLauncher.launch(null)
                             },
                             onRefresh = { refreshKey++ }
                         )

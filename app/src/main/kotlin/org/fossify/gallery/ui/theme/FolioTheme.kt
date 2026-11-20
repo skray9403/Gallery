@@ -51,10 +51,16 @@ private val FolioShapes = Shapes(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun FolioTheme(
+    themeMode: String = "SYSTEM",
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val darkTheme = isSystemInDarkTheme()
+    val systemDark = isSystemInDarkTheme()
+    val darkTheme = when (themeMode) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> systemDark
+    }
     val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else {
