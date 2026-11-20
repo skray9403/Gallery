@@ -1,7 +1,11 @@
 package org.fossify.gallery.ui
 
+import android.app.Activity
 import android.content.Context
+import android.os.Build
+import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -18,12 +22,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,6 +72,15 @@ fun FolioApp() {
     var showVideos by rememberSaveable { mutableStateOf(preferences.getBoolean("show_videos", true)) }
     var favorites by remember {
         mutableStateOf(preferences.getStringSet("favorites", emptySet()).orEmpty().toSet())
+    }
+    var selectedUris by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showTrashConfirmation by remember { mutableStateOf(false) }
+
+    val trashRequestLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) refreshKey++
+        selectedUris = emptySet()
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -130,20 +148,43 @@ fun FolioApp() {
                             .padding(start = 24.dp, end = 16.dp, top = 18.dp, bottom = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        if (selectedUris.isNotEmpty()) {
                             Text(
-                                text = "Folio",
-                                style = MaterialTheme.typography.headlineMedium,
+                                text = "${selectedUris.size} selected",
+                                style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            Text(
-                                text = "Your visual library",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Folio",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Your visual library",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.weight(1f))
-                        if (selectedTab != FolioTab.SETTINGS) {
+                        if (selectedUris.isNotEmpty()) {
+                            IconButton(onClick = {
+                                val selected = mediaItems.filter { it.uri.toString() in selectedUris }
+                                favorites = favorites + selected.map { it.uri.toString() }
+                                preferences.edit().putStringSet("favorites", favorites).apply()
+                                selectedUris = emptySet()
+                            }) {
+                                Icon(Icons.Outlined.Star, contentDescription = "Add selected to favorites")
+                            }
+                            IconButton(onClick = { showTrashConfirmation = true }) {
+                                Icon(Icons.Outlined.Delete, contentDescription = "Move selected to trash")
+                            }
+                            IconButton(onClick = { selectedUris = emptySet() }) {
+                                Icon(Icons.Outlined.Close, contentDescription = "Clear selection")
+                            }
+                        } else if (selectedTab != FolioTab.SETTINGS && selectedTab != FolioTab.TRASH) {
                             IconButton(onClick = { showSearch = !showSearch; searchText = "" }) {
                                 Icon(Icons.Outlined.Search, contentDescription = "Search media")
                             }
@@ -181,7 +222,23 @@ fun FolioApp() {
                             onRequestAccess = {
                                 permissionLauncher.launch(FolioMediaRepository.permissionsToRequest())
                             },
-                            onMediaClick = { selectedMedia = it },
+                            selectedUris = selectedUris,
+                            onMediaClick = {
+                                if (selectedUris.isEmpty()) selectedMedia = it
+                                else selectedUris = if (it.uri.toString() in selectedUris) {
+                                    selectedUris - it.uri.toString()
+                                } else {
+                                    selectedUris + it.uri.toString()
+                                }
+                            },
+                            onMediaLongClick = { selectedUris = selectedUris + it.uri.toString() },
+                            onToggleSelection = { item ->
+                                selectedUris = if (item.uri.toString() in selectedUris) {
+                                    selectedUris - item.uri.toString()
+                                } else {
+                                    selectedUris + item.uri.toString()
+                                }
+                            },
                             onRestore = { item ->
                                 if (FolioMediaRepository.restore(context, item.uri)) refreshKey++
                             },
@@ -199,6 +256,43 @@ fun FolioApp() {
                     }
                 }
             }
+        }
+
+        if (showTrashConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showTrashConfirmation = false },
+                title = { Text("Move to trash?") },
+                text = {
+                    Text("Selected items will be moved to Android's trash. You can restore them from Folio's Trash tab while they remain recoverable.")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showTrashConfirmation = false
+                        val selected = mediaItems.filter { it.uri.toString() in selectedUris }
+                        if (selected.isNotEmpty()) {
+                            if (Build.VERSION.SDK_INT >= 30) {
+                                val pendingIntent = MediaStore.createTrashRequest(
+                                    context.contentResolver,
+                                    selected.map { it.uri },
+                                    true
+                                )
+                                trashRequestLauncher.launch(
+                                    IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                                )
+                            } else {
+                                selected.forEach { item ->
+                                    runCatching { context.contentResolver.delete(item.uri, null, null) }
+                                }
+                                refreshKey++
+                                selectedUris = emptySet()
+                            }
+                        }
+                    }) { Text("Move to trash") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showTrashConfirmation = false }) { Text("Cancel") }
+                }
+            )
         }
     }
 }

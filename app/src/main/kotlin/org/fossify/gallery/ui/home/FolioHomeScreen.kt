@@ -4,6 +4,7 @@ import android.widget.ImageView
 import android.graphics.drawable.ColorDrawable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -69,7 +71,10 @@ internal fun FolioHomeScreen(
     showVideos: Boolean,
     onSearchTextChanged: (String) -> Unit,
     onRequestAccess: () -> Unit,
+    selectedUris: Set<String>,
     onMediaClick: (FolioMediaItem) -> Unit,
+    onMediaLongClick: (FolioMediaItem) -> Unit,
+    onToggleSelection: (FolioMediaItem) -> Unit,
     onRestore: (FolioMediaItem) -> Unit,
     onToggleFavorite: (FolioMediaItem) -> Unit,
     onShowVideosChanged: (Boolean) -> Unit,
@@ -121,6 +126,9 @@ internal fun FolioHomeScreen(
                         onMediaClick = onMediaClick,
                         onToggleFavorite = onToggleFavorite,
                         onRestore = onRestore,
+                        selectedUris = selectedUris,
+                        onMediaLongClick = onMediaLongClick,
+                        onToggleSelection = onToggleSelection,
                         showFavoriteActions = tab == FolioTab.FAVORITES,
                         showRestoreActions = tab == FolioTab.TRASH
                     )
@@ -151,6 +159,9 @@ internal fun FolioHomeScreen(
                             onMediaClick = onMediaClick,
                             onToggleFavorite = onToggleFavorite,
                             onRestore = onRestore,
+                            selectedUris = selectedUris,
+                            onMediaLongClick = onMediaLongClick,
+                            onToggleSelection = onToggleSelection,
                             showFavoriteActions = false,
                             showRestoreActions = false
                         )
@@ -255,6 +266,9 @@ private fun FolioMediaGrid(
     onMediaClick: (FolioMediaItem) -> Unit,
     onToggleFavorite: (FolioMediaItem) -> Unit,
     onRestore: (FolioMediaItem) -> Unit,
+    selectedUris: Set<String>,
+    onMediaLongClick: (FolioMediaItem) -> Unit,
+    onToggleSelection: (FolioMediaItem) -> Unit,
     showFavoriteActions: Boolean,
     showRestoreActions: Boolean
 ) {
@@ -267,9 +281,28 @@ private fun FolioMediaGrid(
     ) {
         items(items, key = { it.uri.toString() }) { item ->
             Box(
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onMediaClick(item) }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .combinedClickable(
+                        onClick = {
+                            if (item.uri.toString() in selectedUris) onToggleSelection(item)
+                            else onMediaClick(item)
+                        },
+                        onLongClick = { onMediaLongClick(item) }
+                    )
             ) {
                 FolioThumbnail(item, Modifier.fillMaxSize())
+                if (item.uri.toString() in selectedUris) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Icon(Icons.Outlined.Check, contentDescription = "Selected", modifier = Modifier.padding(5.dp).size(18.dp))
+                    }
+                }
                 if (item.isVideo) {
                     Surface(
                         modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
