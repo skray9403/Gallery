@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.kotlin.compose)
 }
 
 val keystorePropertiesFile: File = rootProject.file("keystore.properties")
@@ -28,7 +29,7 @@ val abiCodes = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86" to 3, "x86_64" 
 val abiSplits = providers.gradleProperty("ABI_SPLITS").map(String::toBoolean).getOrElse(false)
 
 base {
-    archivesName = "gallery-$baseVersionCode"
+    archivesName = "folio-$baseVersionCode"
 }
 
 android {
@@ -63,6 +64,7 @@ android {
     }
 
     buildFeatures {
+        compose = true
         viewBinding = true
         buildConfig = true
     }
@@ -125,7 +127,8 @@ android {
         )
     }
 
-    namespace = project.property("APP_ID").toString()
+    // Keep the legacy resource/Kotlin namespace stable while the Android install ID changes.
+    namespace = "org.fossify.gallery"
 
     lint {
         checkReleaseBuilds = false
@@ -160,7 +163,7 @@ if (abiSplits) {
                 val unsignedSuffix =
                     if (output.outputFileName.get().endsWith("-unsigned.apk")) "-unsigned" else ""
                 output.versionCode.set(versionCode)
-                output.outputFileName.set("gallery-$versionCode-foss${abiSuffix}-release${unsignedSuffix}.apk")
+                output.outputFileName.set("folio-$versionCode-foss${abiSuffix}-release${unsignedSuffix}.apk")
             }
         }
     }
@@ -174,6 +177,17 @@ detekt {
 }
 
 dependencies {
+    // Compose foundation. UI dependencies are version-aligned through the BOM.
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.navigation.compose)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+
     implementation(libs.fossify.commons)
     implementation(libs.androidx.print)
     implementation(libs.android.image.cropper)

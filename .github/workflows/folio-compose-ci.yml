@@ -1,0 +1,80 @@
+name: Folio Compose rewrite CI
+
+on:
+  push:
+    branches:
+      - rewrite/compose-expressive
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "docs/**"
+      - "fastlane/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: folio-compose-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build FOSS + Google Play debug variants
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build both distribution variants and run baseline checks
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace \
+            :app:assembleFossDebug \
+            :app:assembleGplayDebug \
+            :app:testFossDebugUnitTest \
+            :app:lintFossDebug
+
+      - name: Upload FOSS debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: folio-foss-debug
+          path: app/build/outputs/apk/foss/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Google Play debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: folio-gplay-debug
+          path: app/build/outputs/apk/gplay/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: folio-verification-reports
+          path: |
+            app/build/reports/**
+            app/build/test-results/**
+          if-no-files-found: ignore
+          retention-days: 14

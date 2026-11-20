@@ -15,6 +15,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Gallery"
+rootProject.name = "Folio"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 include(":app")
