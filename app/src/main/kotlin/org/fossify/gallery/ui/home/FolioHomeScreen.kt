@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -57,6 +58,12 @@ import org.fossify.gallery.ui.FolioTab
 import org.fossify.gallery.ui.data.FolioAlbum
 import org.fossify.gallery.ui.data.FolioMediaItem
 import org.fossify.gallery.ui.data.FolioMediaRepository
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 
 @Composable
 internal fun FolioHomeScreen(
@@ -70,6 +77,7 @@ internal fun FolioHomeScreen(
     showSearch: Boolean,
     showVideos: Boolean,
     themeMode: String,
+    sortMode: String,
     onSearchTextChanged: (String) -> Unit,
     onRequestAccess: () -> Unit,
     selectedUris: Set<String>,
@@ -80,6 +88,7 @@ internal fun FolioHomeScreen(
     onToggleFavorite: (FolioMediaItem) -> Unit,
     onShowVideosChanged: (Boolean) -> Unit,
     onThemeModeChanged: (String) -> Unit,
+    onSortModeChanged: (String) -> Unit,
     onExportSettings: () -> Unit,
     onImportSettings: () -> Unit,
     onHideFolder: () -> Unit,
@@ -91,8 +100,10 @@ internal fun FolioHomeScreen(
         FolioSettings(
             showVideos = showVideos,
             themeMode = themeMode,
+            sortMode = sortMode,
             onShowVideosChanged = onShowVideosChanged,
             onThemeModeChanged = onThemeModeChanged,
+            onSortModeChanged = onSortModeChanged,
             onExportSettings = onExportSettings,
             onImportSettings = onImportSettings,
             onHideFolder = onHideFolder,
@@ -287,6 +298,19 @@ private fun FolioMediaGrid(
     showFavoriteActions: Boolean,
     showRestoreActions: Boolean
 ) {
+    val dateGroups = remember(items) {
+        val zone = ZoneId.systemDefault()
+        items.groupBy { item ->
+            runCatching {
+                Instant.ofEpochMilli(item.dateAddedMillis).atZone(zone).toLocalDate()
+            }.getOrNull()
+        }.entries.toList()
+    }
+    val today = LocalDate.now()
+    val dateFormatter = remember {
+        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault())
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Adaptive(116.dp),
         modifier = Modifier.fillMaxSize(),
@@ -294,7 +318,28 @@ private fun FolioMediaGrid(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        items(items, key = { it.uri.toString() }) { item ->
+        dateGroups.forEach { (date, dayItems) ->
+            val sectionLabel = when (date) {
+                null -> "Unknown date"
+                today -> "Today"
+                today.minusDays(1) -> "Yesterday"
+                else -> date.format(dateFormatter)
+            }
+            item(
+                key = "date-header-${date ?: "unknown"}",
+                span = { GridItemSpan(maxLineSpan) }
+            ) {
+                Text(
+                    text = sectionLabel,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, top = 16.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            items(dayItems, key = { it.uri.toString() }) { item ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -344,6 +389,7 @@ private fun FolioMediaGrid(
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -404,7 +450,9 @@ private fun FolioSettings(
     showVideos: Boolean,
     onShowVideosChanged: (Boolean) -> Unit,
     themeMode: String,
+    sortMode: String,
     onThemeModeChanged: (String) -> Unit,
+    onSortModeChanged: (String) -> Unit,
     onExportSettings: () -> Unit,
     onImportSettings: () -> Unit,
     onHideFolder: () -> Unit,
@@ -426,6 +474,20 @@ private fun FolioSettings(
         }
 
         Text("Library", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text("Sort photos and albums", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                "DATE_DESC" to "Newest",
+                "NAME_ASC" to "Name",
+                "SIZE_DESC" to "Largest"
+            ).forEach { (value, label) ->
+                FilterChip(
+                    selected = sortMode == value,
+                    onClick = { onSortModeChanged(value) },
+                    label = { Text(label) }
+                )
+            }
+        }
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(24.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(18.dp),

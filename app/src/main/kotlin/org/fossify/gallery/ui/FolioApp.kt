@@ -84,6 +84,9 @@ fun FolioApp() {
     var themeMode by remember {
         mutableStateOf(preferences.getString("theme_mode", "SYSTEM") ?: "SYSTEM")
     }
+    var sortMode by remember {
+        mutableStateOf(preferences.getString("sort_mode", "DATE_DESC") ?: "DATE_DESC")
+    }
     var favorites by remember {
         mutableStateOf(preferences.getStringSet("favorites", emptySet()).orEmpty().toSet())
     }
@@ -158,6 +161,7 @@ fun FolioApp() {
                     .put("version", 1)
                     .put("showVideos", showVideos)
                     .put("themeMode", themeMode)
+                    .put("sortMode", sortMode)
                     .put("favorites", JSONArray(favorites.toList()))
                     .put("excludedPaths", JSONArray(excludedPaths.toList()))
                 val output = context.contentResolver.openOutputStream(destination)
@@ -198,6 +202,8 @@ fun FolioApp() {
                     }
                 }.filter { it.isNotBlank() }.toSet()
                 val importedShowVideos = payload.optBoolean("showVideos", true)
+                val importedSort = payload.optString("sortMode", "DATE_DESC")
+                    .takeIf { it in setOf("DATE_DESC", "NAME_ASC", "SIZE_DESC") } ?: "DATE_DESC"
                 val importedTheme = payload.optString("themeMode", "SYSTEM")
                     .uppercase()
                     .takeIf { it in setOf("SYSTEM", "LIGHT", "DARK") } ?: "SYSTEM"
@@ -206,11 +212,13 @@ fun FolioApp() {
                 excludedPaths = importedExcludedPaths
                 showVideos = importedShowVideos
                 themeMode = importedTheme
+                sortMode = importedSort
                 preferences.edit()
                     .putStringSet("favorites", importedFavorites)
                     .putStringSet("excluded_paths", importedExcludedPaths)
                     .putBoolean("show_videos", importedShowVideos)
                     .putString("theme_mode", importedTheme)
+                    .putString("sort_mode", importedSort)
                     .apply()
             }
             Toast.makeText(
@@ -254,7 +262,12 @@ fun FolioApp() {
     }
 
     val selectedTab = FolioTab.valueOf(selectedTabName)
-    val visibleItems = if (showVideos) mediaItems else mediaItems.filterNot(FolioMediaItem::isVideo)
+    val filteredItems = if (showVideos) mediaItems else mediaItems.filterNot(FolioMediaItem::isVideo)
+    val visibleItems = when (sortMode) {
+        "NAME_ASC" -> filteredItems.sortedBy { it.displayName.lowercase() }
+        "SIZE_DESC" -> filteredItems.sortedByDescending(FolioMediaItem::sizeBytes)
+        else -> filteredItems.sortedByDescending(FolioMediaItem::dateAddedMillis)
+    }
     val favoriteItems = visibleItems.filter { it.uri.toString() in favorites }
 
     FolioTheme(themeMode = themeMode) {
@@ -370,6 +383,7 @@ fun FolioApp() {
                             showSearch = showSearch,
                             showVideos = showVideos,
                             themeMode = themeMode,
+                            sortMode = sortMode,
                             onSearchTextChanged = { searchText = it },
                             onRequestAccess = {
                                 permissionLauncher.launch(FolioMediaRepository.permissionsToRequest())
@@ -406,6 +420,10 @@ fun FolioApp() {
                             onThemeModeChanged = {
                                 themeMode = it
                                 preferences.edit().putString("theme_mode", it).apply()
+                            },
+                            onSortModeChanged = {
+                                sortMode = it
+                                preferences.edit().putString("sort_mode", it).apply()
                             },
                             onExportSettings = {
                                 exportSettingsLauncher.launch("folio-settings.json")
