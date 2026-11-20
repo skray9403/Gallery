@@ -1,6 +1,10 @@
 package org.fossify.gallery.ui
 
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.view.View
+import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -39,6 +43,13 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.signature.ObjectKey
+import com.davemorrissey.labs.subscaleview.DecoderFactory
+import com.davemorrissey.labs.subscaleview.ImageDecoder
+import com.davemorrissey.labs.subscaleview.ImageRegionDecoder
+import com.davemorrissey.labs.subscaleview.ImageSource
+import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
+import org.fossify.gallery.helpers.MyGlideImageDecoder
+import org.fossify.gallery.helpers.PicassoRegionDecoder
 import org.fossify.gallery.ui.data.FolioMediaItem
 
 @Composable
@@ -65,6 +76,15 @@ internal fun FolioViewer(
                     modifier = Modifier.fillMaxSize(),
                     factory = { PlayerView(it).apply { this.player = player } },
                     update = { it.player = player }
+                )
+            } else if (item.supportsRegionZoom()) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext ->
+                        FolioZoomableImageFrame(viewContext).apply { bind(item) }
+                    },
+                    update = { view -> view.bind(item) },
+                    onRelease = { view -> view.dispose() }
                 )
             } else {
                 var scale by remember(item.uri) { mutableFloatStateOf(1f) }
@@ -129,4 +149,94 @@ internal fun FolioViewer(
             }
         }
     }
+}
+
+
+/**
+ * Full-resolution tiled viewer for formats handled reliably by Android's
+ * BitmapRegionDecoder. Glide keeps a fast preview visible until the first
+ * high-resolution tiles are ready; unsupported formats stay on the Compose
+ * viewer's animated/decoder-aware fallback path.
+ */
+private class FolioZoomableImageFrame(context: Context) : FrameLayout(context) {
+    private val preview = ImageView(context)
+    private val zoomView = SubsamplingScaleImageView(context)
+    private var boundUri: Uri? = null
+
+    init {
+        clipChildren = true
+        clipToPadding = true
+        preview.scaleType = ImageView.ScaleType.FIT_CENTER
+        preview.setBackgroundColor(android.graphics.Color.BLACK)
+        addView(
+            preview,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        )
+        zoomView.visibility = View.INVISIBLE
+        addView(
+            zoomView,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        )
+    }
+
+    fun bind(item: FolioMediaItem) {
+        if (boundUri == item.uri) return
+        boundUri = item.uri
+
+        preview.visibility = View.VISIBLE
+        Glide.with(preview)
+            .load(item.uri)
+            .signature(ObjectKey("${item.uri}-${item.dateAddedMillis}-${item.sizeBytes}"))
+            .fitCenter()
+            .into(preview)
+
+        val signature = ObjectKey("${item.uri}-${item.dateAddedMillis}-${item.sizeBytes}")
+        val metrics = resources.displayMetrics
+        zoomView.apply {
+            setMaxTileSize(4096)
+            setMinimumTileDpi(metrics.densityDpi)
+            maxScale = 10f
+            bitmapDecoderFactory = object : DecoderFactory<ImageDecoder> {
+                override fun make(): ImageDecoder = MyGlideImageDecoder(0, signature)
+            }
+            regionDecoderFactory = object : DecoderFactory<ImageRegionDecoder> {
+                override fun make(): ImageRegionDecoder = PicassoRegionDecoder(
+                    showHighestQuality = false,
+                    screenWidth = metrics.widthPixels,
+                    screenHeight = metrics.heightPixels,
+                    minTileDpi = metrics.densityDpi
+                )
+            }
+            onImageEventListener = object : SubsamplingScaleImageView.OnImageEventListener {
+                override fun onReady() {
+                    zoomView.visibility = View.VISIBLE
+                    preview.visibility = View.GONE
+                }
+
+                override fun onImageLoadError(e: Exception) {
+                    zoomView.visibility = View.GONE
+                    preview.visibility = View.VISIBLE
+                }
+
+                override fun onImageRotation(degrees: Int) = Unit
+
+                override fun onUpEvent() = Unit
+            }
+            setImage(ImageSource.uri(item.uri))
+        }
+    }
+
+    fun dispose() {
+        Glide.with(preview).clear(preview)
+        runCatching { zoomView.recycle() }
+    }
+}
+
+private fun FolioMediaItem.supportsRegionZoom(): Boolean {
+    val name = displayName.lowercase()
+    return mimeType.equals("image/jpeg", ignoreCase = true) ||
+        mimeType.equals("image/png", ignoreCase = true) ||
+        name.endsWith(".jpg") ||
+        name.endsWith(".jpeg") ||
+        name.endsWith(".png")
 }
