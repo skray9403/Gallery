@@ -1,6 +1,7 @@
 package org.fossify.gallery.ui
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.ContentObserver
 import android.content.Context
 import android.content.Intent
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Restore
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
@@ -102,6 +105,12 @@ fun FolioApp(
     var showTrashConfirmation by remember { mutableStateOf(false) }
 
     val trashRequestLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) refreshKey++
+        selectedUris = emptySet()
+    }
+    val restoreRequestLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) refreshKey++
@@ -294,6 +303,35 @@ fun FolioApp(
         }
     }
     val favoriteItems = visibleItems.filter { it.uri.toString() in favorites }
+    val selectionSource = if (selectedTab == FolioTab.TRASH) trashItems else visibleItems
+    val selectedItems = selectionSource.filter { it.uri.toString() in selectedUris }
+
+    val shareSelected: () -> Unit = {
+        val selectedUrisForShare = selectedItems.map { it.uri }
+        if (selectedUrisForShare.isNotEmpty()) {
+            val mimeType = when {
+                selectedItems.all { it.isVideo } -> "video/*"
+                selectedItems.all { !it.isVideo } -> "image/*"
+                else -> "*/*"
+            }
+            val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = mimeType
+                putParcelableArrayListExtra(
+                    Intent.EXTRA_STREAM,
+                    ArrayList(selectedUrisForShare)
+                )
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val clip = ClipData.newUri(
+                    context.contentResolver,
+                    "Folio media",
+                    selectedUrisForShare.first()
+                )
+                selectedUrisForShare.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+                clipData = clip
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Share media"))
+        }
+    }
 
     FolioTheme(themeMode = themeMode) {
         if (selectedMedia != null) {
@@ -359,16 +397,42 @@ fun FolioApp(
                         }
                         Spacer(modifier = Modifier.weight(1f))
                         if (selectedUris.isNotEmpty()) {
-                            IconButton(onClick = {
-                                val selected = mediaItems.filter { it.uri.toString() in selectedUris }
-                                favorites = favorites + selected.map { it.uri.toString() }
-                                preferences.edit().putStringSet("favorites", favorites).apply()
-                                selectedUris = emptySet()
-                            }) {
-                                Icon(Icons.Outlined.Star, contentDescription = "Add selected to favorites")
+                            if (selectedTab == FolioTab.TRASH) {
+                                IconButton(onClick = {
+                                    if (Build.VERSION.SDK_INT >= 30 && selectedItems.isNotEmpty()) {
+                                        val pendingIntent = MediaStore.createTrashRequest(
+                                            context.contentResolver,
+                                            selectedItems.map { it.uri },
+                                            false
+                                        )
+                                        restoreRequestLauncher.launch(
+                                            IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                                        )
+                                    }
+                                }) {
+                                    Icon(Icons.Outlined.Restore, contentDescription = "Restore selected")
+                                }
+                            } else {
+                                IconButton(onClick = {
+                                    val selectedKeys = selectedItems.map { it.uri.toString() }.toSet()
+                                    val allAlreadyFavorite = selectedKeys.isNotEmpty() &&
+                                        selectedKeys.all { it in favorites }
+                                    favorites = if (allAlreadyFavorite) {
+                                        favorites - selectedKeys
+                                    } else {
+                                        favorites + selectedKeys
+                                    }
+                                    preferences.edit().putStringSet("favorites", favorites).apply()
+                                    selectedUris = emptySet()
+                                }) {
+                                    Icon(Icons.Outlined.Star, contentDescription = "Toggle selected favorites")
+                                }
+                                IconButton(onClick = { showTrashConfirmation = true }) {
+                                    Icon(Icons.Outlined.Delete, contentDescription = "Move selected to trash")
+                                }
                             }
-                            IconButton(onClick = { showTrashConfirmation = true }) {
-                                Icon(Icons.Outlined.Delete, contentDescription = "Move selected to trash")
+                            IconButton(onClick = shareSelected) {
+                                Icon(Icons.Outlined.Share, contentDescription = "Share selected")
                             }
                             IconButton(onClick = { selectedUris = emptySet() }) {
                                 Icon(Icons.Outlined.Close, contentDescription = "Clear selection")
@@ -486,7 +550,7 @@ fun FolioApp(
                 confirmButton = {
                     TextButton(onClick = {
                         showTrashConfirmation = false
-                        val selected = mediaItems.filter { it.uri.toString() in selectedUris }
+                        val selected = selectedItems
                         if (selected.isNotEmpty()) {
                             if (Build.VERSION.SDK_INT >= 30) {
                                 val pendingIntent = MediaStore.createTrashRequest(
