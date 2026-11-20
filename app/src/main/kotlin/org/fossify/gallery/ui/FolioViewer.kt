@@ -46,7 +46,6 @@ import com.bumptech.glide.signature.ObjectKey
 import com.davemorrissey.labs.subscaleview.DecoderFactory
 import com.davemorrissey.labs.subscaleview.ImageDecoder
 import com.davemorrissey.labs.subscaleview.ImageRegionDecoder
-import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import org.fossify.gallery.helpers.MyGlideImageDecoder
 import org.fossify.gallery.helpers.PicassoRegionDecoder
@@ -222,7 +221,7 @@ private class FolioZoomableImageFrame(context: Context) : FrameLayout(context) {
 
                 override fun onUpEvent() = Unit
             }
-            setImage(ImageSource.uri(item.uri))
+            setImage(item.uri.toString())
         }
     }
 
