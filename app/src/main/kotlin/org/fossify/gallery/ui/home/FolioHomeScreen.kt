@@ -53,12 +53,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.signature.ObjectKey
 import org.fossify.gallery.ui.FolioTab
 import org.fossify.gallery.ui.data.FolioAlbum
@@ -88,7 +92,7 @@ internal fun FolioHomeScreen(
     onRemoveExcludedPath: (String) -> Unit,
     onRequestAccess: () -> Unit,
     selectedUris: Set<String>,
-    onMediaClick: (FolioMediaItem) -> Unit,
+    onMediaClick: (FolioMediaItem, Rect?) -> Unit,
     onMediaLongClick: (FolioMediaItem) -> Unit,
     onToggleSelection: (FolioMediaItem) -> Unit,
     onRestore: (FolioMediaItem) -> Unit,
@@ -394,7 +398,7 @@ private fun EmptyFavorites() {
 @Composable
 private fun FolioMediaGrid(
     items: List<FolioMediaItem>,
-    onMediaClick: (FolioMediaItem) -> Unit,
+    onMediaClick: (FolioMediaItem, Rect?) -> Unit,
     onToggleFavorite: (FolioMediaItem) -> Unit,
     onRestore: (FolioMediaItem) -> Unit,
     selectedUris: Set<String>,
@@ -432,7 +436,8 @@ private fun FolioMediaGrid(
             }
             item(
                 key = "date-header-${date ?: "unknown"}",
-                span = { GridItemSpan(maxLineSpan) }
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "header"
             ) {
                 Text(
                     text = sectionLabel,
@@ -444,22 +449,32 @@ private fun FolioMediaGrid(
                     fontWeight = FontWeight.SemiBold
                 )
             }
-            items(dayItems, key = { it.uri.toString() }) { item ->
+            items(
+                dayItems,
+                key = { it.uri.toString() },
+                contentType = { if (it.isVideo) "video" else "photo" }
+            ) { item ->
                 val isSelected = item.uri.toString() in selectedUris
-                val cornerRadius by animateDpAsState(
-                    targetValue = if (isSelected) 16.dp else 4.dp,
-                    animationSpec = FolioMotion.gentle(),
-                    label = "mediaCornerRadius"
-                )
+                val cornerRadius = if (selectedUris.isEmpty()) {
+                    4.dp
+                } else {
+                    animateDpAsState(
+                        targetValue = if (isSelected) 16.dp else 4.dp,
+                        animationSpec = FolioMotion.gentle(),
+                        label = "mediaCornerRadius"
+                    ).value
+                }
+                var itemBounds by remember { mutableStateOf<Rect?>(null) }
 
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
+                        .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                         .combinedClickable(
                             onClick = {
                                 if (selectedUris.isNotEmpty()) onToggleSelection(item)
-                                else onMediaClick(item)
+                                else onMediaClick(item, itemBounds)
                             },
                             onLongClick = { onMediaLongClick(item) }
                         ),
@@ -562,7 +577,7 @@ private fun FolioAlbumsGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        items(albums, key = FolioAlbum::id) { album ->
+        items(albums, key = FolioAlbum::id, contentType = { "album" }) { album ->
             Surface(
                 onClick = { onAlbumSelected(album) },
                 shape = RoundedCornerShape(20.dp),
@@ -616,12 +631,18 @@ private fun FolioThumbnail(item: FolioMediaItem, modifier: Modifier = Modifier) 
             }
         },
         update = { view ->
-            Glide.with(view)
-                .load(item.uri)
-                .signature(ObjectKey("${item.dateAddedMillis}-${item.sizeBytes}"))
-                .placeholder(ColorDrawable(android.graphics.Color.rgb(232, 234, 239)))
-                .centerCrop()
-                .into(view)
+            val cacheKey = "${item.uri}-${item.dateAddedMillis}-${item.sizeBytes}"
+            if (view.tag != cacheKey) {
+                view.tag = cacheKey
+                Glide.with(view)
+                    .load(item.uri)
+                    .signature(ObjectKey(cacheKey))
+                    .override(280, 280)
+                    .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                    .placeholder(ColorDrawable(android.graphics.Color.rgb(232, 234, 239)))
+                    .centerCrop()
+                    .into(view)
+            }
         }
     )
 }

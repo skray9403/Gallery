@@ -18,7 +18,7 @@
         android:id="@+id/menu_share"
         android:icon="@drawable/ic_share_vector"
         android:title="@string/share"
-        app:showAsAction="always" />
+        app:showAsAction="never" />
     <item
         android:id="@+id/menu_rotate"
         android:icon="@drawable/ic_rotate_right_vector"
@@ -89,7 +89,7 @@
         android:id="@+id/menu_edit"
         android:icon="@drawable/ic_edit_vector"
         android:title="@string/edit"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="never" />
     <item
         android:id="@+id/menu_add_to_favorites"
         android:icon="@drawable/ic_star_outline_vector"

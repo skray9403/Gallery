@@ -72,7 +72,7 @@ internal fun FolioBottomDock(
     onTabSelected: (FolioTab) -> Unit,
     onShare: () -> Unit,
     onEdit: () -> Unit,
-    onBack: () -> Unit,
+    onDelete: () -> Unit = {},
     isScrolling: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -118,7 +118,7 @@ internal fun FolioBottomDock(
                     ) {
                         ActionPill(icon = Icons.Outlined.Share, label = "Share", onClick = onShare)
                         ActionPill(icon = Icons.Outlined.Edit, label = "Edit", onClick = onEdit)
-                        ActionPill(icon = Icons.Outlined.ArrowBack, label = "Back", onClick = onBack)
+                        ActionPill(icon = Icons.Outlined.Delete, label = "Delete", onClick = onDelete)
                     }
                 } else {
                     Row(

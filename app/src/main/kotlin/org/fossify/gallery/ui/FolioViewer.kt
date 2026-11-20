@@ -10,11 +10,23 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,14 +34,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -56,34 +82,60 @@ import org.fossify.gallery.ui.theme.FolioMotion
 internal fun FolioViewer(
     item: FolioMediaItem,
     backProgress: Float,
+    sourceRect: Rect? = null,
+    onBack: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val entranceScale = remember(item.uri) { Animatable(0.88f) }
-    val entranceAlpha = remember(item.uri) { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
+
+    val openAnim = remember(item.uri) { Animatable(0f) }
     var mediaReady by remember(item.uri) { mutableStateOf(false) }
 
     LaunchedEffect(item.uri) {
-        delay(1200)
+        openAnim.snapTo(0f)
+        openAnim.animateTo(1f, FolioMotion.gentle())
         mediaReady = true
     }
-    LaunchedEffect(item.uri, mediaReady) {
-        if (mediaReady) {
-            launch { entranceScale.animateTo(1f, FolioMotion.gentle()) }
-            launch { entranceAlpha.animateTo(1f, FolioMotion.contentEnter) }
-        }
-    }
 
-    Surface(modifier = modifier, color = Color.Black) {
+    val effectiveProgress = (openAnim.value * (1f - backProgress.coerceIn(0f, 1f))).coerceIn(0f, 1f)
+
+    // Compute source-to-fullscreen transform (Google Photos style)
+    val startScale = if (sourceRect != null && screenWidthPx > 0f && screenHeightPx > 0f) {
+        maxOf(sourceRect.width / screenWidthPx, sourceRect.height / screenHeightPx).coerceIn(0.08f, 1f)
+    } else 0.85f
+
+    val startTransX = if (sourceRect != null) {
+        sourceRect.center.x - (screenWidthPx / 2f)
+    } else 0f
+
+    val startTransY = if (sourceRect != null) {
+        sourceRect.center.y - (screenHeightPx / 2f)
+    } else 0f
+
+    val currentScale = lerp(startScale, 1f, effectiveProgress)
+    val currentTransX = lerp(startTransX, 0f, effectiveProgress)
+    val currentTransY = lerp(startTransY, 0f, effectiveProgress)
+    val currentCorner = androidx.compose.ui.unit.lerp(16.dp, 0.dp, effectiveProgress)
+
+    Surface(modifier = modifier, color = Color.Black.copy(alpha = effectiveProgress)) {
         Box(Modifier.fillMaxSize()) {
             Box(
-                Modifier.fillMaxSize().graphicsLayer {
-                    val progress = backProgress.coerceIn(0f, 1f)
-                    val predictiveScale = 1f - (progress * 0.07f)
-                    scaleX = entranceScale.value * predictiveScale
-                    scaleY = entranceScale.value * predictiveScale
-                    alpha = entranceAlpha.value * (1f - progress * 0.12f)
-                }
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = currentScale
+                        scaleY = currentScale
+                        translationX = currentTransX
+                        translationY = currentTransY
+                        alpha = lerp(0.6f, 1f, effectiveProgress)
+                        clip = true
+                        shape = RoundedCornerShape(currentCorner)
+                    }
             ) {
                 when {
                     item.isVideo -> {
@@ -222,6 +274,59 @@ internal fun FolioViewer(
                                     .into(view)
                             }
                         )
+                    }
+                }
+            }
+
+            // Top Bar with Back navigation & metadata (Google Photos style)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .graphicsLayer { alpha = effectiveProgress },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.52f),
+                    contentColor = Color.White,
+                    tonalElevation = 2.dp
+                ) {
+                    IconButton(onClick = {
+                        scope.launch {
+                            openAnim.animateTo(0f, FolioMotion.gentle())
+                            onBack()
+                        }
+                    }) {
+                        Icon(Icons.Outlined.ArrowBack, contentDescription = "Back")
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (item.dateAddedMillis > 0L) {
+                        val dateLabel = remember(item.dateAddedMillis) {
+                            runCatching {
+                                DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+                                    .withLocale(Locale.getDefault())
+                                    .format(Instant.ofEpochMilli(item.dateAddedMillis).atZone(ZoneId.systemDefault()).toLocalDate())
+                            }.getOrNull()
+                        }
+                        if (dateLabel != null) {
+                            Text(
+                                text = dateLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.75f)
+                            )
+                        }
                     }
                 }
             }

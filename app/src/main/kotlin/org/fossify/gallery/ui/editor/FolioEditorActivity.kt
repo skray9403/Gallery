@@ -82,7 +82,22 @@ private fun FolioEditor(source: Uri, onBack: () -> Unit, onSaved: (Uri) -> Unit)
     LaunchedEffect(source) {
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
-                context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it) }
+                val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(source)?.use {
+                    BitmapFactory.decodeStream(it, null, boundsOptions)
+                }
+                val maxDim = 2048
+                var sampleSize = 1
+                while (boundsOptions.outWidth / sampleSize > maxDim || boundsOptions.outHeight / sampleSize > maxDim) {
+                    sampleSize *= 2
+                }
+                val decodeOptions = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+                context.contentResolver.openInputStream(source)?.use {
+                    BitmapFactory.decodeStream(it, null, decodeOptions)
+                }
             }.getOrNull()
         }
         loading = false

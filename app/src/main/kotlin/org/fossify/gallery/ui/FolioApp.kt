@@ -59,6 +59,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -111,6 +112,7 @@ fun FolioApp(
         mutableStateOf(initialTab.takeIf { candidate -> FolioTab.entries.any { it.name == candidate } } ?: FolioTab.PHOTOS.name)
     }
     var selectedMedia by remember { mutableStateOf<FolioMediaItem?>(null) }
+    var selectedSourceRect by remember { mutableStateOf<Rect?>(null) }
     var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
     var mediaItems by remember { mutableStateOf<List<FolioMediaItem>>(emptyList()) }
     var trashItems by remember { mutableStateOf<List<FolioMediaItem>>(emptyList()) }
@@ -397,6 +399,7 @@ fun FolioApp(
             events.collect { event -> predictiveBackProgress = event.progress }
             predictiveBackProgress = 0f
             selectedMedia = null
+            selectedSourceRect = null
             isScrollingDown = false
         } catch (_: kotlinx.coroutines.CancellationException) {
             predictiveBackProgress = 0f
@@ -414,6 +417,11 @@ fun FolioApp(
                     FolioViewer(
                         item = selectedMedia!!,
                         backProgress = predictiveBackProgress,
+                        sourceRect = selectedSourceRect,
+                        onBack = {
+                            selectedMedia = null
+                            selectedSourceRect = null
+                        },
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(contentPadding)
@@ -650,13 +658,14 @@ fun FolioApp(
                                     permissionLauncher.launch(FolioMediaRepository.permissionsToRequest())
                                 },
                                 selectedUris = selectedUris,
-                                onMediaClick = {
+                                onMediaClick = { item, bounds ->
                                     if (pickerMode && !allowMultiple) {
-                                        onMediaPicked(listOf(it.uri))
+                                        onMediaPicked(listOf(item.uri))
                                     } else if (pickerMode || selectedUris.isNotEmpty()) {
-                                        selectedUris = selectedUris + it.uri.toString()
+                                        selectedUris = selectedUris + item.uri.toString()
                                     } else {
-                                        selectedMedia = it
+                                        selectedSourceRect = bounds
+                                        selectedMedia = item
                                     }
                                 },
                                 onMediaLongClick = {
@@ -735,12 +744,27 @@ fun FolioApp(
                             val editIntent = Intent(Intent.ACTION_EDIT).apply {
                                 setClassName(context, "org.fossify.gallery.ui.editor.FolioEditorActivity")
                                 setDataAndType(item.uri, item.mimeType)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
-                            context.startActivity(editIntent)
+                            runCatching {
+                                context.startActivity(editIntent)
+                            }.onFailure {
+                                val genericEdit = Intent(Intent.ACTION_EDIT).apply {
+                                    setDataAndType(item.uri, item.mimeType)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                runCatching {
+                                    context.startActivity(Intent.createChooser(genericEdit, "Edit with"))
+                                }
+                            }
                         }
                     },
-                    onBack = { selectedMedia = null },
+                    onDelete = {
+                        selectedMedia?.let {
+                            selectedUris = setOf(it.uri.toString())
+                            showTrashConfirmation = true
+                        }
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
@@ -760,6 +784,8 @@ fun FolioApp(
                 confirmButton = {
                     TextButton(onClick = {
                         showTrashConfirmation = false
+                        selectedMedia = null
+                        selectedSourceRect = null
                         val selected = selectedItems
                         if (selected.isNotEmpty()) {
                             if (Build.VERSION.SDK_INT >= 30) {
