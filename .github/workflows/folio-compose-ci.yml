@@ -50,9 +50,9 @@ jobs:
         run: |
           chmod +x ./gradlew
           set -o pipefail
-          ./gradlew --no-daemon --stacktrace --console=plain \\
-            :app:assembleDebug \\
-            :app:testDebugUnitTest \\
+          ./gradlew --no-daemon --stacktrace --console=plain \
+            :app:assembleDebug \
+            :app:testDebugUnitTest \
             :app:lintDebug 2>&1 | tee gradle-build.log
 
       - name: Upload Folio debug APK
