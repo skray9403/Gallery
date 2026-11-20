@@ -147,11 +147,10 @@ internal fun FolioViewer(
                                         if (player.isPlaying) player.pause() else player.play()
                                         playing = player.isPlaying
                                     }) {
-                                        androidx.compose.material3.Icon(
-                                            imageVector = if (playing) androidx.compose.material.icons.Icons.Outlined.Pause
-                                                else androidx.compose.material.icons.Icons.Outlined.PlayArrow,
-                                            contentDescription = if (playing) "Pause" else "Play",
-                                            tint = Color.White
+                                        androidx.compose.material3.Text(
+                                            text = if (playing) "Ⅱ" else "▶",
+                                            color = Color.White,
+                                            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
                                         )
                                     }
                                     androidx.compose.material3.Text(
