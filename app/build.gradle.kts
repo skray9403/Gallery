@@ -90,12 +90,6 @@ android {
         }
     }
 
-    flavorDimensions.add("licensing")
-    productFlavors {
-        register("foss")
-        register("gplay")
-    }
-
     splits {
         abi {
             isEnable = abiSplits
@@ -157,7 +151,7 @@ android {
 
 if (abiSplits) {
     androidComponents {
-        onVariants(selector().withBuildType("release").withFlavor("licensing" to "foss")) { variant ->
+        onVariants(selector().withBuildType("release")) { variant ->
             variant.outputs.forEach { output ->
                 val abi = output.filters.find {
                     it.filterType == FilterConfiguration.FilterType.ABI
