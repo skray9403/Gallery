@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -98,11 +99,66 @@ internal fun FolioViewer(
                                 player.release()
                             }
                         }
-                        AndroidView(
-                            modifier = Modifier.fillMaxSize(),
-                            factory = { PlayerView(it).apply { this.player = player } },
-                            update = { it.player = player }
-                        )
+                        var playing by remember(item.uri) { mutableStateOf(true) }
+                        var position by remember(item.uri) { mutableFloatStateOf(0f) }
+                        var duration by remember(item.uri) { mutableFloatStateOf(0f) }
+                        LaunchedEffect(player) {
+                            while (true) {
+                                position = player.currentPosition.coerceAtLeast(0L).toFloat()
+                                duration = player.duration.takeIf { it > 0L }?.toFloat() ?: 0f
+                                playing = player.isPlaying
+                                delay(300)
+                            }
+                        }
+                        Box(Modifier.fillMaxSize()) {
+                            AndroidView(
+                                modifier = Modifier.fillMaxSize(),
+                                factory = { PlayerView(it).apply {
+                                    this.player = player
+                                    useController = false
+                                } },
+                                update = {
+                                    it.player = player
+                                    it.useController = false
+                                }
+                            )
+                            androidx.compose.foundation.layout.Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(androidx.compose.ui.Alignment.BottomCenter)
+                                    .background(Color.Black.copy(alpha = 0.58f))
+                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                            ) {
+                                androidx.compose.material3.Slider(
+                                    value = position.coerceIn(0f, duration.coerceAtLeast(1f)),
+                                    onValueChange = { next ->
+                                        position = next
+                                        player.seekTo(next.toLong())
+                                    },
+                                    valueRange = 0f..duration.coerceAtLeast(1f)
+                                )
+                                androidx.compose.foundation.layout.Row(
+                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                                ) {
+                                    androidx.compose.material3.IconButton(onClick = {
+                                        if (player.isPlaying) player.pause() else player.play()
+                                        playing = player.isPlaying
+                                    }) {
+                                        androidx.compose.material3.Icon(
+                                            imageVector = if (playing) androidx.compose.material.icons.Icons.Outlined.Pause
+                                                else androidx.compose.material.icons.Icons.Outlined.PlayArrow,
+                                            contentDescription = if (playing) "Pause" else "Play",
+                                            tint = Color.White
+                                        )
+                                    }
+                                    androidx.compose.material3.Text(
+                                        text = "${formatPlayerTime(position.toLong())} / ${formatPlayerTime(duration.toLong())}",
+                                        color = Color.White,
+                                        style = androidx.compose.material3.MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     item.supportsRegionZoom() -> {
@@ -275,4 +331,17 @@ private fun FolioMediaItem.supportsRegionZoom(): Boolean {
         name.endsWith(".jpg") ||
         name.endsWith(".jpeg") ||
         name.endsWith(".png")
+}
+
+
+private fun formatPlayerTime(milliseconds: Long): String {
+    val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0L) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
+    }
 }
