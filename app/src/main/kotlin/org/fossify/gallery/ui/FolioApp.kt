@@ -66,7 +66,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 @Composable
-fun FolioApp() {
+fun FolioApp(
+    pickerMode: Boolean = false,
+    pickerMimeType: String? = null,
+    initialUri: Uri? = null,
+    onMediaPicked: (Uri) -> Unit = {}
+) {
     val context = LocalContext.current
     val preferences = remember(context) {
         context.getSharedPreferences("folio_preferences", Context.MODE_PRIVATE)
@@ -261,12 +266,32 @@ fun FolioApp() {
         }
     }
 
+    LaunchedEffect(initialUri, pickerMode, mediaItems) {
+        if (initialUri != null && !pickerMode && selectedMedia?.uri != initialUri) {
+            selectedMedia = mediaItems.firstOrNull { it.uri == initialUri }
+                ?: withContext(Dispatchers.IO) {
+                    FolioMediaRepository.loadSingle(context, initialUri)
+                }
+        }
+    }
+
     val selectedTab = FolioTab.valueOf(selectedTabName)
     val filteredItems = if (showVideos) mediaItems else mediaItems.filterNot(FolioMediaItem::isVideo)
-    val visibleItems = when (sortMode) {
+    val sortedItems = when (sortMode) {
         "NAME_ASC" -> filteredItems.sortedBy { it.displayName.lowercase() }
         "SIZE_DESC" -> filteredItems.sortedByDescending(FolioMediaItem::sizeBytes)
         else -> filteredItems.sortedByDescending(FolioMediaItem::dateAddedMillis)
+    }
+    val visibleItems = sortedItems.filter { item ->
+        when {
+            !pickerMode -> true
+            pickerMimeType.isNullOrBlank() || pickerMimeType == "*/*" -> true
+            pickerMimeType.endsWith("/*") -> item.mimeType.startsWith(
+                pickerMimeType.removeSuffix("*"),
+                ignoreCase = true
+            )
+            else -> item.mimeType.equals(pickerMimeType, ignoreCase = true)
+        }
     }
     val favoriteItems = visibleItems.filter { it.uri.toString() in favorites }
 
@@ -321,12 +346,12 @@ fun FolioApp() {
                         } else {
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    text = "Folio",
+                                    text = if (pickerMode) "Select media" else "Folio",
                                     style = MaterialTheme.typography.headlineMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = "Your visual library",
+                                    text = if (pickerMode) "Choose a photo or video" else "Your visual library",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -390,14 +415,21 @@ fun FolioApp() {
                             },
                             selectedUris = selectedUris,
                             onMediaClick = {
-                                if (selectedUris.isEmpty()) selectedMedia = it
-                                else selectedUris = if (it.uri.toString() in selectedUris) {
-                                    selectedUris - it.uri.toString()
+                                if (pickerMode) {
+                                    onMediaPicked(it.uri)
+                                } else if (selectedUris.isEmpty()) {
+                                    selectedMedia = it
                                 } else {
-                                    selectedUris + it.uri.toString()
+                                    selectedUris = if (it.uri.toString() in selectedUris) {
+                                        selectedUris - it.uri.toString()
+                                    } else {
+                                        selectedUris + it.uri.toString()
+                                    }
                                 }
                             },
-                            onMediaLongClick = { selectedUris = selectedUris + it.uri.toString() },
+                            onMediaLongClick = {
+                                if (!pickerMode) selectedUris = selectedUris + it.uri.toString()
+                            },
                             onToggleSelection = { item ->
                                 selectedUris = if (item.uri.toString() in selectedUris) {
                                     selectedUris - item.uri.toString()

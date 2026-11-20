@@ -97,6 +97,70 @@ object FolioMediaRepository {
         }
     }
 
+
+    fun loadSingle(context: Context, uri: Uri): FolioMediaItem? {
+        val resolver = context.contentResolver
+        val mimeType = runCatching { resolver.getType(uri) }
+            .getOrNull()
+            ?: "application/octet-stream"
+
+        return try {
+            resolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+
+                fun stringColumn(name: String): String? {
+                    val index = cursor.getColumnIndex(name)
+                    return if (index >= 0 && !cursor.isNull(index)) cursor.getString(index) else null
+                }
+
+                fun longColumn(name: String): Long? {
+                    val index = cursor.getColumnIndex(name)
+                    return if (index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else null
+                }
+
+                fun intColumn(name: String): Int {
+                    val index = cursor.getColumnIndex(name)
+                    return if (index >= 0 && !cursor.isNull(index)) cursor.getInt(index) else 0
+                }
+
+                val isVideo = mimeType.startsWith("video/", ignoreCase = true)
+                val dateAdded = longColumn(MediaStore.MediaColumns.DATE_ADDED)?.times(1000L)
+                    ?: System.currentTimeMillis()
+                val dateTaken = longColumn(MediaStore.Images.Media.DATE_TAKEN) ?: 0L
+                val id = longColumn(MediaStore.MediaColumns._ID)
+                    ?: uri.lastPathSegment?.toLongOrNull()
+                    ?: -1L
+
+                FolioMediaItem(
+                    id = id,
+                    uri = uri,
+                    displayName = stringColumn(android.provider.OpenableColumns.DISPLAY_NAME)
+                        ?: uri.lastPathSegment
+                        ?: "Shared media",
+                    mimeType = stringColumn(MediaStore.MediaColumns.MIME_TYPE) ?: mimeType,
+                    dateAddedMillis = maxOf(dateAdded, dateTaken),
+                    bucketId = stringColumn(
+                        if (isVideo) MediaStore.Video.Media.BUCKET_ID else MediaStore.Images.Media.BUCKET_ID
+                    ),
+                    bucketName = stringColumn(
+                        if (isVideo) MediaStore.Video.Media.BUCKET_DISPLAY_NAME else MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+                    ) ?: "Shared media",
+                    relativePath = stringColumn(MediaStore.MediaColumns.RELATIVE_PATH).orEmpty(),
+                    width = intColumn(MediaStore.MediaColumns.WIDTH),
+                    height = intColumn(MediaStore.MediaColumns.HEIGHT),
+                    sizeBytes = longColumn(android.provider.OpenableColumns.SIZE) ?: 0L,
+                    isVideo = isVideo,
+                    durationMillis = longColumn(MediaStore.Video.Media.DURATION) ?: 0L,
+                    isTrashed = false
+                )
+            }
+        } catch (_: SecurityException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+    }
+
     fun buildAlbums(items: List<FolioMediaItem>): List<FolioAlbum> =
         items.groupBy { it.bucketId ?: it.bucketName.ifBlank { "unknown" } }
             .mapNotNull { (id, contents) ->
