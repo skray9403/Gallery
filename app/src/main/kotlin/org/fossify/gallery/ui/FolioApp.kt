@@ -2,7 +2,7 @@ package org.fossify.gallery.ui
 
 import android.app.Activity
 import android.content.ClipData
-import android.content.ContentObserver
+import android.database.ContentObserver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri

@@ -10,7 +10,12 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.os.Environment
+import android.webkit.MimeTypeMap
 import androidx.core.content.ContextCompat
+import org.fossify.gallery.helpers.MediaFetcher
+import java.io.File
+import java.util.Locale
 
 data class FolioMediaItem(
     val id: Long,
@@ -65,18 +70,70 @@ object FolioMediaRepository {
         context: Context,
         excludedRelativePaths: Set<String> = emptySet()
     ): List<FolioMediaItem> {
-        if (excludedRelativePaths.isEmpty()) {
-            return loadCollections(context, trashed = false)
+        val indexed = loadCollections(context, trashed = false)
+        val supplemental = if (Build.VERSION.SDK_INT >= 30) loadLegacySpecialFormats(context) else emptyList()
+        val merged = (indexed + supplemental).distinctBy {
+            it.relativePath.trim('/').lowercase(Locale.ROOT) + "|" + it.displayName.lowercase(Locale.ROOT)
         }
-        val excluded = excludedRelativePaths
-            .map { it.trim('/') }
-            .filter { it.isNotBlank() }
-        return loadCollections(context, trashed = false).filterNot { item ->
+        val excluded = excludedRelativePaths.map { it.trim('/') }.filter { it.isNotBlank() }
+        if (excluded.isEmpty()) return merged
+        return merged.filterNot { item ->
             val mediaPath = item.relativePath.trim('/')
             excluded.any { folder ->
                 mediaPath.equals(folder, ignoreCase = true) ||
                     mediaPath.startsWith("$folder/", ignoreCase = true)
             }
+        }
+    }
+
+    /**
+     * Supplement standard Images/Video collections with formats recognised by
+     * the original Gallery scanner (RAW, SVG, GIF, APNG, AVIF and JPEG XL).
+     *
+     * Only MediaStore content URIs are returned, retaining scoped-storage grants.
+     */
+    private fun loadLegacySpecialFormats(context: Context): List<FolioMediaItem> {
+        val byFolder = runCatching {
+            MediaFetcher(context).getAndroid11FolderMedia(
+                isPickImage = false,
+                isPickVideo = false,
+                favoritePaths = arrayListOf(),
+                getFavoritePathsOnly = false,
+                getProperDateTaken = false,
+                dateTakens = HashMap()
+            )
+        }.getOrNull() ?: return emptyList()
+
+        val filesUri = MediaStore.Files.getContentUri("external")
+        val storageRoot = Environment.getExternalStorageDirectory().absolutePath.trimEnd('/') + "/"
+        val mimeMap = MimeTypeMap.getSingleton()
+        return byFolder.values.flatten().mapNotNull { medium ->
+            if (medium.mediaStoreId <= 0L) return@mapNotNull null
+            val extension = medium.name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+            val mime = mimeMap.getMimeTypeFromExtension(extension)
+                ?: if (medium.isVideo()) "video/*" else "image/*"
+            val parent = medium.parentPath.trimEnd('/')
+            val relative = if (parent.startsWith(storageRoot, ignoreCase = true)) {
+                parent.removePrefix(storageRoot).trim('/')
+            } else {
+                parent.trim('/')
+            }
+            FolioMediaItem(
+                id = medium.mediaStoreId,
+                uri = ContentUris.withAppendedId(filesUri, medium.mediaStoreId),
+                displayName = medium.name,
+                mimeType = mime,
+                dateAddedMillis = if (medium.taken > 0L) medium.taken else medium.modified,
+                bucketId = null,
+                bucketName = File(parent).name.ifBlank { "Other" },
+                relativePath = if (relative.isBlank()) "" else relative + "/",
+                width = 0,
+                height = 0,
+                sizeBytes = medium.size,
+                isVideo = medium.isVideo(),
+                durationMillis = medium.videoDuration * 1000L,
+                isTrashed = false
+            )
         }
     }
 
