@@ -1,6 +1,7 @@
 package org.fossify.gallery.ui.home
 
 import android.widget.ImageView
+import android.graphics.drawable.ColorDrawable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Search
@@ -47,7 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.squareup.picasso.Picasso
+import com.bumptech.glide.Glide
+import com.bumptech.glide.signature.ObjectKey
 import org.fossify.gallery.ui.FolioTab
 import org.fossify.gallery.ui.data.FolioAlbum
 import org.fossify.gallery.ui.data.FolioMediaItem
@@ -58,6 +61,7 @@ internal fun FolioHomeScreen(
     tab: FolioTab,
     items: List<FolioMediaItem>,
     favoriteItems: List<FolioMediaItem>,
+    trashItems: List<FolioMediaItem>,
     hasAccess: Boolean,
     isLoading: Boolean,
     searchText: String,
@@ -66,6 +70,7 @@ internal fun FolioHomeScreen(
     onSearchTextChanged: (String) -> Unit,
     onRequestAccess: () -> Unit,
     onMediaClick: (FolioMediaItem) -> Unit,
+    onRestore: (FolioMediaItem) -> Unit,
     onToggleFavorite: (FolioMediaItem) -> Unit,
     onShowVideosChanged: (Boolean) -> Unit,
     onRefresh: () -> Unit
@@ -82,6 +87,7 @@ internal fun FolioHomeScreen(
 
     val searchResults = when (tab) {
         FolioTab.FAVORITES -> favoriteItems
+        FolioTab.TRASH -> trashItems
         else -> items
     }.filter { item ->
         searchText.isBlank() ||
@@ -102,11 +108,22 @@ internal fun FolioHomeScreen(
         }
 
         when (tab) {
-            FolioTab.PHOTOS, FolioTab.FAVORITES -> {
+            FolioTab.PHOTOS, FolioTab.FAVORITES, FolioTab.TRASH -> {
                 if (searchResults.isEmpty()) {
-                    if (tab == FolioTab.FAVORITES) EmptyFavorites() else EmptyLibrary(isLoading, onRefresh)
+                    when (tab) {
+                        FolioTab.FAVORITES -> EmptyFavorites()
+                        FolioTab.TRASH -> EmptyTrash()
+                        else -> EmptyLibrary(isLoading, onRefresh)
+                    }
                 } else {
-                    FolioMediaGrid(searchResults, onMediaClick, onToggleFavorite, tab == FolioTab.FAVORITES)
+                    FolioMediaGrid(
+                        items = searchResults,
+                        onMediaClick = onMediaClick,
+                        onToggleFavorite = onToggleFavorite,
+                        onRestore = onRestore,
+                        showFavoriteActions = tab == FolioTab.FAVORITES,
+                        showRestoreActions = tab == FolioTab.TRASH
+                    )
                 }
             }
             FolioTab.ALBUMS -> {
@@ -133,6 +150,8 @@ internal fun FolioHomeScreen(
                     }
                 }
             }
+            FolioTab.TRASH -> Unit
+            FolioTab.TRASH -> Unit
             FolioTab.SETTINGS -> Unit
         }
     }
@@ -196,6 +215,21 @@ private fun EmptyLibrary(isLoading: Boolean, onRefresh: () -> Unit) {
 }
 
 @Composable
+private fun EmptyTrash() {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(Icons.Outlined.Restore, contentDescription = null, modifier = Modifier.size(52.dp), tint = MaterialTheme.colorScheme.secondary)
+        Spacer(Modifier.height(18.dp))
+        Text("Trash is empty", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Text("Items you move to trash will appear here while Android keeps them recoverable.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
 private fun EmptyFavorites() {
     Column(
         modifier = Modifier.fillMaxSize().padding(28.dp),
@@ -215,7 +249,9 @@ private fun FolioMediaGrid(
     items: List<FolioMediaItem>,
     onMediaClick: (FolioMediaItem) -> Unit,
     onToggleFavorite: (FolioMediaItem) -> Unit,
-    showFavoriteActions: Boolean
+    onRestore: (FolioMediaItem) -> Unit,
+    showFavoriteActions: Boolean,
+    showRestoreActions: Boolean
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(116.dp),
@@ -242,6 +278,17 @@ private fun FolioMediaGrid(
                 if (showFavoriteActions) {
                     IconButton(onClick = { onToggleFavorite(item) }, modifier = Modifier.align(Alignment.TopEnd)) {
                         Icon(Icons.Outlined.Star, contentDescription = "Remove favorite", tint = Color.White)
+                    }
+                }
+                if (showRestoreActions) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.62f)
+                    ) {
+                        IconButton(onClick = { onRestore(item) }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Outlined.Restore, contentDescription = "Restore media", tint = Color.White)
+                        }
                     }
                 }
             }
@@ -289,7 +336,12 @@ private fun FolioThumbnail(item: FolioMediaItem, modifier: Modifier = Modifier) 
             }
         },
         update = { view ->
-            Picasso.get().load(item.uri).fit().centerCrop().into(view)
+            Glide.with(view)
+                .load(item.uri)
+                .signature(ObjectKey("${item.dateAddedMillis}-${item.sizeBytes}"))
+                .placeholder(ColorDrawable(android.graphics.Color.rgb(232, 234, 239)))
+                .centerCrop()
+                .into(view)
         }
     )
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Icon
@@ -45,6 +46,7 @@ internal fun FolioBottomDock(
                     FolioTab.PHOTOS -> Icons.Outlined.PhotoLibrary
                     FolioTab.ALBUMS -> Icons.Outlined.FolderOpen
                     FolioTab.FAVORITES -> Icons.Outlined.Star
+                    FolioTab.TRASH -> Icons.Outlined.Delete
                     FolioTab.SETTINGS -> Icons.Outlined.Settings
                 }
                 NavigationBarItem(

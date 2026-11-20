@@ -2,13 +2,14 @@ package org.fossify.gallery.ui.data
 
 import android.Manifest
 import android.content.ContentResolver
+import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import android.content.ContentUris
-import android.database.Cursor
 import androidx.core.content.ContextCompat
 
 data class FolioMediaItem(
@@ -19,11 +20,13 @@ data class FolioMediaItem(
     val dateAddedMillis: Long,
     val bucketId: String?,
     val bucketName: String,
+    val relativePath: String,
     val width: Int,
     val height: Int,
     val sizeBytes: Long,
     val isVideo: Boolean,
-    val durationMillis: Long
+    val durationMillis: Long,
+    val isTrashed: Boolean
 )
 
 data class FolioAlbum(
@@ -58,19 +61,24 @@ object FolioMediaRepository {
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 
-    fun loadMedia(context: Context): List<FolioMediaItem> {
-        val resolver = context.contentResolver
-        val images = queryCollection(
-            resolver,
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            video = false
-        )
-        val videos = queryCollection(
-            resolver,
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            video = true
-        )
-        return (images + videos).sortedByDescending(FolioMediaItem::dateAddedMillis)
+    fun loadMedia(context: Context): List<FolioMediaItem> =
+        loadCollections(context, trashed = false)
+
+    fun loadTrash(context: Context): List<FolioMediaItem> =
+        if (Build.VERSION.SDK_INT >= 30) loadCollections(context, trashed = true) else emptyList()
+
+    fun restore(context: Context, uri: Uri): Boolean {
+        if (Build.VERSION.SDK_INT < 30) return false
+        return try {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_TRASHED, 0)
+            }
+            context.contentResolver.update(uri, values, null, null) > 0
+        } catch (_: SecurityException) {
+            false
+        } catch (_: IllegalArgumentException) {
+            false
+        }
     }
 
     fun buildAlbums(items: List<FolioMediaItem>): List<FolioAlbum> =
@@ -90,10 +98,28 @@ object FolioMediaRepository {
     private fun granted(context: Context, permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
+    private fun loadCollections(context: Context, trashed: Boolean): List<FolioMediaItem> {
+        val resolver = context.contentResolver
+        val images = queryCollection(
+            resolver,
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            video = false,
+            trashed = trashed
+        )
+        val videos = queryCollection(
+            resolver,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            video = true,
+            trashed = trashed
+        )
+        return (images + videos).sortedByDescending(FolioMediaItem::dateAddedMillis)
+    }
+
     private fun queryCollection(
         resolver: ContentResolver,
         collection: Uri,
-        video: Boolean
+        video: Boolean,
+        trashed: Boolean
     ): List<FolioMediaItem> {
         val projection = buildList {
             add(MediaStore.MediaColumns._ID)
@@ -106,16 +132,27 @@ object FolioMediaRepository {
             add(if (video) MediaStore.Video.Media.BUCKET_ID else MediaStore.Images.Media.BUCKET_ID)
             add(if (video) MediaStore.Video.Media.BUCKET_DISPLAY_NAME else MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
             add(if (video) MediaStore.Video.Media.DURATION else MediaStore.Images.Media.DATE_TAKEN)
+            if (Build.VERSION.SDK_INT >= 29) add(MediaStore.MediaColumns.RELATIVE_PATH)
+            if (Build.VERSION.SDK_INT >= 30) add(MediaStore.MediaColumns.IS_TRASHED)
         }.toTypedArray()
+
+        val selection = if (Build.VERSION.SDK_INT >= 30) {
+            "${MediaStore.MediaColumns.IS_TRASHED} = ?"
+        } else {
+            null
+        }
+        val selectionArgs = if (selection != null) arrayOf(if (trashed) "1" else "0") else null
 
         return try {
             resolver.query(
                 collection,
                 projection,
-                null,
-                null,
+                selection,
+                selectionArgs,
                 "${MediaStore.MediaColumns.DATE_ADDED} DESC"
-            )?.use { cursor -> cursor.readFolioItems(collection, video) }.orEmpty()
+            )?.use { cursor ->
+                cursor.readFolioItems(collection, video, trashed)
+            }.orEmpty()
         } catch (_: SecurityException) {
             emptyList()
         } catch (_: IllegalArgumentException) {
@@ -125,7 +162,8 @@ object FolioMediaRepository {
 
     private fun Cursor.readFolioItems(
         collection: Uri,
-        video: Boolean
+        video: Boolean,
+        trashed: Boolean
     ): List<FolioMediaItem> {
         val idColumn = getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
         val nameColumn = getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
@@ -142,6 +180,7 @@ object FolioMediaRepository {
         )
         val durationColumn = if (video) getColumnIndex(MediaStore.Video.Media.DURATION) else -1
         val dateTakenColumn = if (video) -1 else getColumnIndex(MediaStore.Images.Media.DATE_TAKEN)
+        val relativePathColumn = getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
 
         return buildList {
             while (moveToNext()) {
@@ -167,11 +206,13 @@ object FolioMediaRepository {
                         } else {
                             "Other"
                         },
+                        relativePath = if (relativePathColumn >= 0) getString(relativePathColumn).orEmpty() else "",
                         width = if (widthColumn >= 0) getInt(widthColumn) else 0,
                         height = if (heightColumn >= 0) getInt(heightColumn) else 0,
                         sizeBytes = if (sizeColumn >= 0) getLong(sizeColumn) else 0L,
                         isVideo = video,
-                        durationMillis = if (durationColumn >= 0) getLong(durationColumn) else 0L
+                        durationMillis = if (durationColumn >= 0) getLong(durationColumn) else 0L,
+                        isTrashed = trashed
                     )
                 )
             }

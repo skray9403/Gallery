@@ -89,6 +89,7 @@ sanselan = { module = "org.apache.sanselan:sanselan", version.ref = "sanselan" }
 apng = { module = "com.github.penfeizhou.android.animation:apng", version.ref = "animationAndroid" }
 awebp = { module = "com.github.penfeizhou.android.animation:awebp", version.ref = "animationAndroid" }
 avif = { module = "com.github.penfeizhou.android.animation:avif", version.ref = "animationAndroid" }
+glide = { module = "com.github.bumptech.glide:glide", version.ref = "glideCompiler" }
 glide-compiler = { module = "com.github.bumptech.glide:ksp", version.ref = "glideCompiler" }
 zjupure-webpdecoder = { module = "com.github.zjupure:webpdecoder", version.ref = "zjupureWebpdecoder" }
 picasso = { module = "com.squareup.picasso:picasso", version.ref = "picasso" }

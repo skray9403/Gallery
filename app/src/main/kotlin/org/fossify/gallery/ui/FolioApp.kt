@@ -54,6 +54,7 @@ fun FolioApp() {
     var selectedTabName by rememberSaveable { mutableStateOf(FolioTab.PHOTOS.name) }
     var selectedMedia by remember { mutableStateOf<FolioMediaItem?>(null) }
     var mediaItems by remember { mutableStateOf<List<FolioMediaItem>>(emptyList()) }
+    var trashItems by remember { mutableStateOf<List<FolioMediaItem>>(emptyList()) }
     var hasAccess by remember { mutableStateOf(FolioMediaRepository.hasMediaAccess(context)) }
     var isLoading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
@@ -74,12 +75,15 @@ fun FolioApp() {
     LaunchedEffect(hasAccess, refreshKey) {
         if (hasAccess) {
             isLoading = true
-            mediaItems = withContext(Dispatchers.IO) {
-                FolioMediaRepository.loadMedia(context)
+            val loaded = withContext(Dispatchers.IO) {
+                FolioMediaRepository.loadMedia(context) to FolioMediaRepository.loadTrash(context)
             }
+            mediaItems = loaded.first
+            trashItems = loaded.second
             isLoading = false
         } else {
             mediaItems = emptyList()
+            trashItems = emptyList()
         }
     }
 
@@ -93,6 +97,14 @@ fun FolioApp() {
                 item = selectedMedia!!,
                 isFavorite = selectedMedia!!.uri.toString() in favorites,
                 onClose = { selectedMedia = null },
+                onEdit = {
+                    val editIntent = android.content.Intent(android.content.Intent.ACTION_EDIT).apply {
+                        setClassName(context, "org.fossify.gallery.activities.EditActivity")
+                        setDataAndType(selectedMedia!!.uri, selectedMedia!!.mimeType)
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    }
+                    context.startActivity(editIntent)
+                },
                 onToggleFavorite = {
                     val key = selectedMedia!!.uri.toString()
                     favorites = if (key in favorites) favorites - key else favorites + key
@@ -159,6 +171,7 @@ fun FolioApp() {
                             tab = tab,
                             items = visibleItems,
                             favoriteItems = favoriteItems,
+                            trashItems = trashItems,
                             hasAccess = hasAccess,
                             isLoading = isLoading,
                             searchText = searchText,
@@ -169,6 +182,9 @@ fun FolioApp() {
                                 permissionLauncher.launch(FolioMediaRepository.permissionsToRequest())
                             },
                             onMediaClick = { selectedMedia = it },
+                            onRestore = { item ->
+                                if (FolioMediaRepository.restore(context, item.uri)) refreshKey++
+                            },
                             onToggleFavorite = { item ->
                                 val key = item.uri.toString()
                                 favorites = if (key in favorites) favorites - key else favorites + key
@@ -191,5 +207,6 @@ internal enum class FolioTab(val label: String) {
     PHOTOS("Photos"),
     ALBUMS("Albums"),
     FAVORITES("Favorites"),
+    TRASH("Trash"),
     SETTINGS("Settings")
 }

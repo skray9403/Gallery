@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -36,7 +37,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import com.squareup.picasso.Picasso
+import com.bumptech.glide.Glide
+import com.bumptech.glide.signature.ObjectKey
 import org.fossify.gallery.ui.data.FolioMediaItem
 
 @Composable
@@ -44,6 +46,7 @@ internal fun FolioViewer(
     item: FolioMediaItem,
     isFavorite: Boolean,
     onClose: () -> Unit,
+    onEdit: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
     val context = LocalContext.current
@@ -84,7 +87,13 @@ internal fun FolioViewer(
                         scaleType = ImageView.ScaleType.FIT_CENTER
                         setBackgroundColor(android.graphics.Color.BLACK)
                     } },
-                    update = { Picasso.get().load(item.uri).fit().centerInside().into(it) }
+                    update = { view ->
+                        Glide.with(view)
+                            .load(item.uri)
+                            .signature(ObjectKey("${item.dateAddedMillis}-${item.sizeBytes}"))
+                            .fitCenter()
+                            .into(view)
+                    }
                 )
             }
             Row(
@@ -105,6 +114,9 @@ internal fun FolioViewer(
                         context.startActivity(Intent.createChooser(share, "Share media"))
                     }) {
                         Icon(Icons.Outlined.Share, contentDescription = "Share", tint = Color.White)
+                    }
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Outlined.Edit, contentDescription = "Edit", tint = Color.White)
                     }
                     IconButton(onClick = onToggleFavorite) {
                         Icon(
