@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Flip
 import androidx.compose.material.icons.outlined.RotateRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -93,7 +92,7 @@ private fun FolioEditor(source: Uri, onBack: () -> Unit, onSaved: (Uri) -> Unit)
         val c = contrast
         val t = (1f - c) * 128f + light * 255f
         val s = colour
-        val r = .213f * (1f - s); val g = .715f * (1f - s); val b = .072f * (1f - s)
+        val r = 0.213f * (1f - s); val g = 0.715f * (1f - s); val b = 0.072f * (1f - s)
         ComposeColorMatrix(floatArrayOf(
             (r+s)*c,g*c,b*c,0f,t, r*c,(g+s)*c,b*c,0f,t,
             r*c,g*c,(b+s)*c,0f,t, 0f,0f,0f,1f,0f
@@ -132,12 +131,12 @@ private fun FolioEditor(source: Uri, onBack: () -> Unit, onSaved: (Uri) -> Unit)
                 Slider(
                     value = when(tool) { Tool.LIGHT -> light; Tool.CONTRAST -> contrast; Tool.COLOUR -> colour; Tool.CROP -> crop },
                     onValueChange = { v -> when(tool) { Tool.LIGHT -> light=v; Tool.CONTRAST -> contrast=v; Tool.COLOUR -> colour=v; Tool.CROP -> crop=v } },
-                    valueRange = when(tool) { Tool.LIGHT -> -.5f.. .5f; Tool.CONTRAST, Tool.COLOUR -> 0f..2f; Tool.CROP -> 0f.. .3f }
+                    valueRange = when(tool) { Tool.LIGHT -> -0.5f..0.5f; Tool.CONTRAST, Tool.COLOUR -> 0f..2f; Tool.CROP -> 0f..0.3f }
                 )
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Tool.entries.forEach { FilledTonalButton(onClick = { tool=it }) { Text(it.title) } }
                     FilledTonalButton(onClick = { rotation=(rotation+90)%360 }) { Icon(Icons.Outlined.RotateRight, null); Text("Rotate") }
-                    FilledTonalButton(onClick = { flip=!flip }) { Icon(Icons.Outlined.Flip, null); Text("Flip") }
+                    FilledTonalButton(onClick = { flip=!flip }) { Text("Flip") }
                 }
                 TextButton(onClick = { light=0f; contrast=1f; colour=1f; crop=0f; rotation=0; flip=false }) { Text("Reset") }
             }
@@ -165,7 +164,7 @@ private fun saveImage(
     val dy=(rotated.height*crop).toInt().coerceIn(0,rotated.height/3)
     val clipped=Bitmap.createBitmap(rotated,dx,dy,(rotated.width-2*dx).coerceAtLeast(1),(rotated.height-2*dy).coerceAtLeast(1))
     val c=contrast; val offset=(1f-c)*128f+light*255f
-    val s=saturation; val r=.213f*(1f-s); val g=.715f*(1f-s); val b=.072f*(1f-s)
+    val s=saturation; val r=0.213f*(1f-s); val g=0.715f*(1f-s); val b=0.072f*(1f-s)
     val cm=ColorMatrix(floatArrayOf((r+s)*c,g*c,b*c,0f,offset,r*c,(g+s)*c,b*c,0f,offset,r*c,g*c,(b+s)*c,0f,offset,0f,0f,0f,1f,0f))
     val out=Bitmap.createBitmap(clipped.width,clipped.height,Bitmap.Config.ARGB_8888)
     Canvas(out).drawBitmap(clipped,0f,0f,Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter=ColorMatrixColorFilter(cm) })
