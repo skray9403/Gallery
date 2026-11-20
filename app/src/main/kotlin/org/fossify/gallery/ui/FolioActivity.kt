@@ -79,7 +79,7 @@ class FolioActivity : ComponentActivity() {
             allowMultiple = pickerMode &&
                 intent?.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false) == true,
             initialUri = intent?.data.takeIf { action == Intent.ACTION_VIEW },
-            initialTab = if (action == Intent.ACTION_APPLICATION_PREFERENCES) {
+            initialTab = if (action == "android.intent.action.APPLICATION_PREFERENCES") {
                 FolioTab.SETTINGS.name
             } else {
                 FolioTab.PHOTOS.name
