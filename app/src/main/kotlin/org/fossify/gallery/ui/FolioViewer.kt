@@ -7,6 +7,9 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +53,7 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import org.fossify.gallery.helpers.MyGlideImageDecoder
 import org.fossify.gallery.helpers.PicassoRegionDecoder
 import org.fossify.gallery.ui.data.FolioMediaItem
+import org.fossify.gallery.ui.theme.FolioMotion
 
 @Composable
 internal fun FolioViewer(
@@ -63,7 +67,16 @@ internal fun FolioViewer(
     BackHandler(onBack = onClose)
     Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
         Box(Modifier.fillMaxSize()) {
-            if (item.isVideo) {
+            AnimatedVisibility(
+                visible = true,
+                modifier = Modifier.fillMaxSize(),
+                enter = scaleIn(
+                    initialScale = 0.88f,
+                    animationSpec = FolioMotion.gentle()
+                ) + fadeIn(animationSpec = FolioMotion.contentEnter)
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    if (item.isVideo) {
                 val player = remember(item.uri) { ExoPlayer.Builder(context).build() }
                 DisposableEffect(player, item.uri) {
                     player.setMediaItem(PlayerMediaItem.fromUri(item.uri))
@@ -114,6 +127,8 @@ internal fun FolioViewer(
                             .into(view)
                     }
                 )
+                    }
+                }
             }
             Row(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 24.dp),
