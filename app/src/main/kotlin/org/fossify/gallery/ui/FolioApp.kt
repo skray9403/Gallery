@@ -529,6 +529,12 @@ fun FolioApp(
                                 showVideos = showVideos,
                                 themeMode = themeMode,
                                 sortMode = sortMode,
+                                excludedPaths = excludedPaths,
+                                onRemoveExcludedPath = { path ->
+                                    excludedPaths = excludedPaths - path
+                                    preferences.edit().putStringSet("excluded_paths", excludedPaths).apply()
+                                    refreshKey++
+                                },
                                 onSearchTextChanged = { searchText = it },
                                 onRequestAccess = {
                                     permissionLauncher.launch(FolioMediaRepository.permissionsToRequest())

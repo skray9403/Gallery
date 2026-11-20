@@ -78,6 +78,8 @@ internal fun FolioHomeScreen(
     showVideos: Boolean,
     themeMode: String,
     sortMode: String,
+    excludedPaths: Set<String>,
+    onRemoveExcludedPath: (String) -> Unit,
     onSearchTextChanged: (String) -> Unit,
     onRequestAccess: () -> Unit,
     selectedUris: Set<String>,
@@ -107,7 +109,9 @@ internal fun FolioHomeScreen(
             onExportSettings = onExportSettings,
             onImportSettings = onImportSettings,
             onHideFolder = onHideFolder,
-            onExcludeFolder = onExcludeFolder
+            onExcludeFolder = onExcludeFolder,
+            excludedPaths = excludedPaths,
+            onRemoveExcludedPath = onRemoveExcludedPath
         )
         return
     }
@@ -456,7 +460,9 @@ private fun FolioSettings(
     onExportSettings: () -> Unit,
     onImportSettings: () -> Unit,
     onHideFolder: () -> Unit,
-    onExcludeFolder: () -> Unit
+    onExcludeFolder: () -> Unit,
+    excludedPaths: Set<String>,
+    onRemoveExcludedPath: (String) -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
@@ -518,6 +524,24 @@ private fun FolioSettings(
         Button(onClick = onExcludeFolder, modifier = Modifier.fillMaxWidth()) {
             Text("Exclude a folder from Folio")
         }
+        if (excludedPaths.isNotEmpty()) {
+            Text("Excluded from Folio", style = MaterialTheme.typography.titleMedium)
+            excludedPaths.sorted().forEach { path ->
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(path, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = { onRemoveExcludedPath(path) }) { Text("Remove") }
+                    }
+                }
+            }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onExportSettings, modifier = Modifier.weight(1f)) {
                 Text("Export settings")
