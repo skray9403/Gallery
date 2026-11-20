@@ -6,40 +6,32 @@ import android.net.Uri
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
+import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.launch
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.exoplayer.ExoPlayer
@@ -53,29 +45,30 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import org.fossify.gallery.helpers.MyGlideImageDecoder
 import org.fossify.gallery.helpers.PicassoRegionDecoder
 import org.fossify.gallery.ui.data.FolioMediaItem
-import org.fossify.gallery.ui.theme.FolioMotion
 
 @Composable
 internal fun FolioViewer(
     item: FolioMediaItem,
-    isFavorite: Boolean,
-    onClose: () -> Unit,
-    onEdit: () -> Unit,
-    onToggleFavorite: () -> Unit
+    backProgress: Float,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    BackHandler(onBack = onClose)
-    Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
+    val entranceScale = remember(item.uri) { Animatable(0.88f) }
+    val entranceAlpha = remember(item.uri) { Animatable(0f) }
+    LaunchedEffect(item.uri) {
+        launch { entranceScale.animateTo(1f, FolioMotion.gentle()) }
+        launch { entranceAlpha.animateTo(1f, FolioMotion.contentEnter) }
+    }
+    Surface(modifier = modifier, color = Color.Black) {
         Box(Modifier.fillMaxSize()) {
-            AnimatedVisibility(
-                visible = true,
-                modifier = Modifier.fillMaxSize(),
-                enter = scaleIn(
-                    initialScale = 0.88f,
-                    animationSpec = FolioMotion.gentle()
-                ) + fadeIn(animationSpec = FolioMotion.contentEnter)
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    val predictiveScale = 1f - (backProgress.coerceIn(0f, 1f) * 0.07f)
+                    scaleX = entranceScale.value * predictiveScale
+                    scaleY = entranceScale.value * predictiveScale
+                    alpha = entranceAlpha.value * (1f - backProgress.coerceIn(0f, 1f) * 0.12f)
+                }
             ) {
-                Box(Modifier.fillMaxSize()) {
                     if (item.isVideo) {
                 val player = remember(item.uri) { ExoPlayer.Builder(context).build() }
                 DisposableEffect(player, item.uri) {
@@ -127,37 +120,6 @@ internal fun FolioViewer(
                             .into(view)
                     }
                 )
-                    }
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Outlined.Close, contentDescription = "Close", tint = Color.White)
-                }
-                Row {
-                    IconButton(onClick = {
-                        val share = Intent(Intent.ACTION_SEND).apply {
-                            type = item.mimeType
-                            putExtra(Intent.EXTRA_STREAM, item.uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(Intent.createChooser(share, "Share media"))
-                    }) {
-                        Icon(Icons.Outlined.Share, contentDescription = "Share", tint = Color.White)
-                    }
-                    IconButton(onClick = onEdit) {
-                        Icon(Icons.Outlined.Edit, contentDescription = "Edit", tint = Color.White)
-                    }
-                    IconButton(onClick = onToggleFavorite) {
-                        Icon(
-                            if (isFavorite) Icons.Outlined.Star else Icons.Outlined.StarBorder,
-                            contentDescription = if (isFavorite) "Remove favorite" else "Add favorite",
-                            tint = Color.White
-                        )
                     }
                 }
             }
