@@ -58,7 +58,7 @@
             android:exported="true"
             android:grantUriPermissions="true"
             android:label="@string/basic_editor"
-            android:theme="@style/AppTheme.NoActionBar">
+            android:theme="@style/AppTheme">
             <intent-filter>
                 <action android:name="android.intent.action.EDIT" />
                 <category android:name="android.intent.category.DEFAULT" />
