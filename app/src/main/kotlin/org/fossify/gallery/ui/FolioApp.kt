@@ -406,7 +406,7 @@ fun FolioApp(
                 FolioViewer(
                     item = selectedMedia!!,
                     backProgress = predictiveBackProgress,
-                    modifier = Modifier.fillMaxSize().padding(contentPadding)
+                    modifier = Modifier.fillMaxSize()
                 )
             } else {
                                     Column(
