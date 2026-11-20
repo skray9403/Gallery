@@ -84,13 +84,16 @@ fun FolioApp(
     allowMultiple: Boolean = false,
     initialUri: Uri? = null,
     launchRevision: Int = 0,
+    initialTab: String = FolioTab.PHOTOS.name,
     onMediaPicked: (List<Uri>) -> Unit = {}
 ) {
     val context = LocalContext.current
     val preferences = remember(context) {
         context.getSharedPreferences("folio_preferences", Context.MODE_PRIVATE)
     }
-    var selectedTabName by rememberSaveable { mutableStateOf(FolioTab.PHOTOS.name) }
+    var selectedTabName by rememberSaveable(launchRevision) {
+        mutableStateOf(initialTab.takeIf { candidate -> FolioTab.entries.any { it.name == candidate } } ?: FolioTab.PHOTOS.name)
+    }
     var selectedMedia by remember { mutableStateOf<FolioMediaItem?>(null) }
     var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
     var mediaItems by remember { mutableStateOf<List<FolioMediaItem>>(emptyList()) }

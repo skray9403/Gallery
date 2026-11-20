@@ -35,6 +35,7 @@ class FolioActivity : ComponentActivity() {
                 allowMultiple = request.allowMultiple,
                 initialUri = request.initialUri,
                 launchRevision = request.revision,
+                initialTab = request.initialTab,
                 onMediaPicked = { uris ->
                     if (uris.isNotEmpty()) {
                         val resultIntent = Intent().apply {
@@ -78,6 +79,11 @@ class FolioActivity : ComponentActivity() {
             allowMultiple = pickerMode &&
                 intent?.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false) == true,
             initialUri = intent?.data.takeIf { action == Intent.ACTION_VIEW },
+            initialTab = if (action == Intent.ACTION_APPLICATION_PREFERENCES) {
+                FolioTab.SETTINGS.name
+            } else {
+                FolioTab.PHOTOS.name
+            },
             revision = launchRevision
         )
     }
@@ -88,5 +94,6 @@ private data class FolioLaunchRequest(
     val mimeType: String? = null,
     val allowMultiple: Boolean = false,
     val initialUri: Uri? = null,
+    val initialTab: String = FolioTab.PHOTOS.name,
     val revision: Int = 0
 )

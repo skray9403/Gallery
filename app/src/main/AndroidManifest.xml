@@ -61,6 +61,7 @@
             android:label="@string/app_launcher_name"
             android:theme="@style/AppTheme">
 
+
             <intent-filter>
                 <action android:name="android.intent.action.PICK" />
                 <category android:name="android.intent.category.DEFAULT" />
