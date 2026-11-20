@@ -83,6 +83,7 @@ internal fun FolioHomeScreen(
     onExportSettings: () -> Unit,
     onImportSettings: () -> Unit,
     onHideFolder: () -> Unit,
+    onExcludeFolder: () -> Unit,
     onRefresh: () -> Unit
 ) {
     var selectedAlbumId by remember(tab) { mutableStateOf<String?>(null) }
@@ -94,7 +95,8 @@ internal fun FolioHomeScreen(
             onThemeModeChanged = onThemeModeChanged,
             onExportSettings = onExportSettings,
             onImportSettings = onImportSettings,
-            onHideFolder = onHideFolder
+            onHideFolder = onHideFolder,
+            onExcludeFolder = onExcludeFolder
         )
         return
     }
@@ -405,7 +407,8 @@ private fun FolioSettings(
     onThemeModeChanged: (String) -> Unit,
     onExportSettings: () -> Unit,
     onImportSettings: () -> Unit,
-    onHideFolder: () -> Unit
+    onHideFolder: () -> Unit,
+    onExcludeFolder: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
@@ -445,6 +448,14 @@ private fun FolioSettings(
         Button(onClick = onHideFolder, modifier = Modifier.fillMaxWidth()) {
             Text("Hide a folder from media scanners")
         }
+        Text(
+            "Exclude a folder only from Folio. The folder remains visible to other apps and its files are not changed.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(onClick = onExcludeFolder, modifier = Modifier.fillMaxWidth()) {
+            Text("Exclude a folder from Folio")
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onExportSettings, modifier = Modifier.weight(1f)) {
                 Text("Export settings")
@@ -454,7 +465,7 @@ private fun FolioSettings(
             }
         }
         Text(
-            "Exports include Folio preferences and favorite URI references. They do not copy the media files themselves. Folio starts with fresh private data; your original Gallery installation is not changed.",
+            "Exports include Folio preferences, favorite URI references and excluded folder paths. They do not copy media files. Folio starts with fresh private data; your original Gallery installation is not changed.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

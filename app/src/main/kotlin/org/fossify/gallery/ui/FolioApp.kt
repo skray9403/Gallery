@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -86,6 +87,9 @@ fun FolioApp() {
     var favorites by remember {
         mutableStateOf(preferences.getStringSet("favorites", emptySet()).orEmpty().toSet())
     }
+    var excludedPaths by remember {
+        mutableStateOf(preferences.getStringSet("excluded_paths", emptySet()).orEmpty().toSet())
+    }
     var selectedUris by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showTrashConfirmation by remember { mutableStateOf(false) }
 
@@ -101,6 +105,28 @@ fun FolioApp() {
     ) {
         hasAccess = FolioMediaRepository.hasMediaAccess(context)
         refreshKey++
+    }
+
+    val excludeFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri ->
+        if (treeUri != null) {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(treeUri, flags)
+            }
+            val folderPath = runCatching {
+                DocumentsContract.getTreeDocumentId(treeUri).substringAfter(':').trim('/')
+            }.getOrNull().orEmpty()
+            if (folderPath.isNotBlank()) {
+                excludedPaths = excludedPaths + folderPath
+                preferences.edit().putStringSet("excluded_paths", excludedPaths).apply()
+                refreshKey++
+                Toast.makeText(context, "Folder excluded from Folio", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(context, "Could not identify this folder", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     val hideFolderLauncher = rememberLauncherForActivityResult(
@@ -133,6 +159,7 @@ fun FolioApp() {
                     .put("showVideos", showVideos)
                     .put("themeMode", themeMode)
                     .put("favorites", JSONArray(favorites.toList()))
+                    .put("excludedPaths", JSONArray(excludedPaths.toList()))
                 val output = context.contentResolver.openOutputStream(destination)
                     ?: error("Unable to open the selected destination")
                 output.bufferedWriter().use { writer -> writer.write(payload.toString(2)) }
@@ -164,16 +191,24 @@ fun FolioApp() {
                         add(array.getString(index))
                     }
                 }
+                val importedExcludedPaths = buildSet {
+                    val array = payload.optJSONArray("excludedPaths") ?: JSONArray()
+                    for (index in 0 until array.length()) {
+                        add(array.getString(index).trim('/'))
+                    }
+                }.filter { it.isNotBlank() }.toSet()
                 val importedShowVideos = payload.optBoolean("showVideos", true)
                 val importedTheme = payload.optString("themeMode", "SYSTEM")
                     .uppercase()
                     .takeIf { it in setOf("SYSTEM", "LIGHT", "DARK") } ?: "SYSTEM"
 
                 favorites = importedFavorites
+                excludedPaths = importedExcludedPaths
                 showVideos = importedShowVideos
                 themeMode = importedTheme
                 preferences.edit()
                     .putStringSet("favorites", importedFavorites)
+                    .putStringSet("excluded_paths", importedExcludedPaths)
                     .putBoolean("show_videos", importedShowVideos)
                     .putString("theme_mode", importedTheme)
                     .apply()
@@ -202,11 +237,12 @@ fun FolioApp() {
         }
     }
 
-    LaunchedEffect(hasAccess, refreshKey) {
+    LaunchedEffect(hasAccess, refreshKey, excludedPaths) {
         if (hasAccess) {
             isLoading = true
             val loaded = withContext(Dispatchers.IO) {
-                FolioMediaRepository.loadMedia(context) to FolioMediaRepository.loadTrash(context)
+                FolioMediaRepository.loadMedia(context, excludedPaths) to
+                    FolioMediaRepository.loadTrash(context)
             }
             mediaItems = loaded.first
             trashItems = loaded.second
@@ -379,6 +415,9 @@ fun FolioApp() {
                             },
                             onHideFolder = {
                                 hideFolderLauncher.launch(null)
+                            },
+                            onExcludeFolder = {
+                                excludeFolderLauncher.launch(null)
                             },
                             onRefresh = { refreshKey++ }
                         )

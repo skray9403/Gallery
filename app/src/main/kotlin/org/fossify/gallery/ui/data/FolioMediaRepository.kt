@@ -61,8 +61,24 @@ object FolioMediaRepository {
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 
-    fun loadMedia(context: Context): List<FolioMediaItem> =
-        loadCollections(context, trashed = false)
+    fun loadMedia(
+        context: Context,
+        excludedRelativePaths: Set<String> = emptySet()
+    ): List<FolioMediaItem> {
+        if (excludedRelativePaths.isEmpty()) {
+            return loadCollections(context, trashed = false)
+        }
+        val excluded = excludedRelativePaths
+            .map { it.trim('/') }
+            .filter { it.isNotBlank() }
+        return loadCollections(context, trashed = false).filterNot { item ->
+            val mediaPath = item.relativePath.trim('/')
+            excluded.any { folder ->
+                mediaPath.equals(folder, ignoreCase = true) ||
+                    mediaPath.startsWith("$folder/", ignoreCase = true)
+            }
+        }
+    }
 
     fun loadTrash(context: Context): List<FolioMediaItem> =
         if (Build.VERSION.SDK_INT >= 30) loadCollections(context, trashed = true) else emptyList()
