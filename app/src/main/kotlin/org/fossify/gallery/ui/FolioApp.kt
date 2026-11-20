@@ -2,15 +2,15 @@ package org.fossify.gallery.ui
 
 import android.app.Activity
 import android.content.ClipData
-import android.database.ContentObserver
 import android.content.Context
 import android.content.Intent
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.provider.MediaStore
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ExperimentalActivityApi
 import androidx.activity.compose.PredictiveBackHandler
@@ -23,30 +23,39 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import kotlin.math.abs
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Restore
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,12 +69,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import org.fossify.gallery.ui.data.FolioMediaItem
 import org.fossify.gallery.ui.data.FolioMediaRepository
@@ -102,7 +116,6 @@ fun FolioApp(
     var isLoading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
     var searchText by rememberSaveable { mutableStateOf("") }
-    var showSearch by rememberSaveable { mutableStateOf(false) }
     var showVideos by remember { mutableStateOf(preferences.getBoolean("show_videos", true)) }
     var themeMode by remember {
         mutableStateOf(preferences.getString("theme_mode", "SYSTEM") ?: "SYSTEM")
@@ -118,6 +131,22 @@ fun FolioApp(
     }
     var selectedUris by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showTrashConfirmation by remember { mutableStateOf(false) }
+
+    // Directional scroll hysteresis (Monomail preference: hides dock when scrolling down, reveals on scroll up)
+    var isScrollingDown by remember { mutableStateOf(false) }
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                if (delta < -8f) {
+                    isScrollingDown = true
+                } else if (delta > 8f) {
+                    isScrollingDown = false
+                }
+                return Offset.Zero
+            }
+        }
+    }
 
     val trashRequestLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -293,11 +322,11 @@ fun FolioApp(
     LaunchedEffect(launchRevision, pickerMode, pickerMimeType, allowMultiple) {
         selectedUris = emptySet()
         showTrashConfirmation = false
+        isScrollingDown = false
         if (pickerMode) {
             selectedMedia = null
             selectedTabName = FolioTab.PHOTOS.name
             searchText = ""
-            showSearch = false
         } else if (initialUri == null) {
             selectedMedia = null
         }
@@ -366,156 +395,234 @@ fun FolioApp(
             events.collect { event -> predictiveBackProgress = event.progress }
             predictiveBackProgress = 0f
             selectedMedia = null
+            isScrollingDown = false
         } catch (_: kotlinx.coroutines.CancellationException) {
             predictiveBackProgress = 0f
         }
     }
 
     FolioTheme(themeMode = themeMode) {
-        Scaffold(
-            containerColor = if (selectedMedia != null) androidx.compose.ui.graphics.Color.Black
-                else MaterialTheme.colorScheme.surface,
-            bottomBar = {
-                if (!pickerMode) {
-                    FolioBottomDock(
-                        selectedTab = selectedTab,
-                        viewerMode = selectedMedia != null,
-                        onTabSelected = { selectedTabName = it.name },
-                        onShare = {
-                            selectedMedia?.let { item ->
-                                val share = Intent(Intent.ACTION_SEND).apply {
-                                    type = item.mimeType
-                                    putExtra(Intent.EXTRA_STREAM, item.uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(Intent.createChooser(share, "Share media"))
-                            }
-                        },
-                        onEdit = {
-                            selectedMedia?.let { item ->
-                                val editIntent = Intent(Intent.ACTION_EDIT).apply {
-                                    setClassName(context, "org.fossify.gallery.ui.editor.FolioEditorActivity")
-                                    setDataAndType(item.uri, item.mimeType)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                                }
-                                context.startActivity(editIntent)
-                            }
-                        },
-                        onBack = { selectedMedia = null }
+        Box(modifier = Modifier.fillMaxSize()) {
+            Scaffold(
+                containerColor = if (selectedMedia != null) Color.Black
+                    else MaterialTheme.colorScheme.surface,
+                contentWindowInsets = WindowInsets(0, 0, 0, 0)
+            ) { _ ->
+                if (selectedMedia != null) {
+                    FolioViewer(
+                        item = selectedMedia!!,
+                        backProgress = predictiveBackProgress,
+                        modifier = Modifier.fillMaxSize()
                     )
-                }
-            }
-        ) { contentPadding ->
-            if (selectedMedia != null) {
-                FolioViewer(
-                    item = selectedMedia!!,
-                    backProgress = predictiveBackProgress,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                                    Column(
-                        modifier = Modifier.fillMaxSize().padding(contentPadding)
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .nestedScroll(nestedScrollConnection)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 24.dp, end = 16.dp, top = 18.dp, bottom = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (selectedUris.isNotEmpty()) {
-                                Text(
-                                    text = "${selectedUris.size} selected",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(
-                                        text = if (pickerMode) "Select media" else "Folio",
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = if (pickerMode) "Choose a photo or video" else "Your visual library",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.weight(1f))
-                            if (selectedUris.isNotEmpty()) {
-                                if (pickerMode) {
-                                    IconButton(
-                                        onClick = { onMediaPicked(selectedItems.map { it.uri }) },
-                                        enabled = selectedItems.isNotEmpty()
+                        // Expressive Top Header & Contextual Selection Bar
+                        AnimatedContent(
+                            targetState = selectedUris.isNotEmpty(),
+                            transitionSpec = {
+                                (fadeIn(FolioMotion.contentEnter) + slideInVertically(FolioMotion.screenSlide()) { -it / 4 }) togetherWith
+                                    (fadeOut(FolioMotion.contentExit) + slideOutVertically(FolioMotion.screenSlide()) { -it / 4 })
+                            },
+                            label = "folioTopHeader"
+                        ) { isSelectionMode ->
+                            if (isSelectionMode) {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    tonalElevation = 2.dp,
+                                    shadowElevation = 4.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(52.dp)
+                                            .padding(horizontal = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Outlined.Check, contentDescription = "Use selected media")
+                                        IconButton(onClick = { selectedUris = emptySet() }) {
+                                            Icon(Icons.Outlined.Close, contentDescription = "Clear selection")
+                                        }
+                                        Text(
+                                            text = "${selectedUris.size} selected",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(start = 4.dp)
+                                        )
+                                        Spacer(Modifier.weight(1f))
+                                        if (pickerMode) {
+                                            IconButton(
+                                                onClick = { onMediaPicked(selectedItems.map { it.uri }) },
+                                                enabled = selectedItems.isNotEmpty()
+                                            ) {
+                                                Icon(Icons.Outlined.Check, contentDescription = "Use selected media")
+                                            }
+                                        } else {
+                                            IconButton(onClick = {
+                                                val allVisible = selectionSource.map { it.uri.toString() }.toSet()
+                                                selectedUris = if (selectedUris.containsAll(allVisible)) emptySet() else allVisible
+                                            }) {
+                                                Icon(Icons.Outlined.Check, contentDescription = "Select all")
+                                            }
+                                            if (selectedTab == FolioTab.TRASH) {
+                                                IconButton(onClick = {
+                                                   if (Build.VERSION.SDK_INT >= 30 && selectedItems.isNotEmpty()) {
+                                                        val pendingIntent = MediaStore.createTrashRequest(
+                                                            context.contentResolver,
+                                                            selectedItems.map { it.uri },
+                                                            false
+                                                        )
+                                                        restoreRequestLauncher.launch(
+                                                            IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                                                        )
+                                                    }
+                                                }) {
+                                                    Icon(Icons.Outlined.Restore, contentDescription = "Restore selected")
+                                                }
+                                            } else {
+                                                IconButton(onClick = {
+                                                    val selectedKeys = selectedItems.map { it.uri.toString() }.toSet()
+                                                    val allAlreadyFavorite = selectedKeys.isNotEmpty() &&
+                                                        selectedKeys.all { it in favorites }
+                                                    favorites = if (allAlreadyFavorite) favorites - selectedKeys else favorites + selectedKeys
+                                                    preferences.edit().putStringSet("favorites", favorites).apply()
+                                                    selectedUris = emptySet()
+                                                }) {
+                                                    Icon(Icons.Outlined.Star, contentDescription = "Toggle favorites")
+                                                }
+                                                IconButton(onClick = { showTrashConfirmation = true }) {
+                                                    Icon(Icons.Outlined.Delete, contentDescription = "Move to trash")
+                                                }
+                                            }
+                                            IconButton(onClick = shareSelected) {
+                                                Icon(Icons.Outlined.Share, contentDescription = "Share selected")
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                if (pickerMode) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                text = "Select media",
+                                                style = MaterialTheme.typography.headlineSmall,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = "Choose a photo or video",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 } else {
-                                    if (selectedTab == FolioTab.TRASH) {
-                                        IconButton(onClick = {
-                                            if (Build.VERSION.SDK_INT >= 30 && selectedItems.isNotEmpty()) {
-                                                val pendingIntent = MediaStore.createTrashRequest(
-                                                    context.contentResolver,
-                                                    selectedItems.map { it.uri },
-                                                    false
-                                                )
-                                                restoreRequestLauncher.launch(
-                                                    IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                                                )
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        contentColor = MaterialTheme.colorScheme.onSurface,
+                                        tonalElevation = 2.dp,
+                                        shadowElevation = 3.dp,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(52.dp)
+                                                .padding(horizontal = 14.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Search,
+                                                contentDescription = "Search",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(Modifier.width(10.dp))
+                                            Box(modifier = Modifier.weight(1f)) {
+                                                if (searchText.isEmpty()) {
+                                                    Text(
+                                                        text = when (selectedTab) {
+                                                            FolioTab.PHOTOS -> "Search photos and videos…"
+                                                            FolioTab.ALBUMS -> "Search albums and folders…"
+                                                            FolioTab.FAVORITES -> "Search favorites…"
+                                                            FolioTab.TRASH -> "Search trash…"
+                                                            FolioTab.SETTINGS -> "Settings"
+                                                        },
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                if (selectedTab != FolioTab.SETTINGS) {
+                                                    BasicTextField(
+                                                        value = searchText,
+                                                        onValueChange = { searchText = it },
+                                                        singleLine = true,
+                                                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        ),
+                                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    )
+                                                }
                                             }
-                                        }) {
-                                            Icon(Icons.Outlined.Restore, contentDescription = "Restore selected")
-                                        }
-                                    } else {
-                                        IconButton(onClick = {
-                                            val selectedKeys = selectedItems.map { it.uri.toString() }.toSet()
-                                            val allAlreadyFavorite = selectedKeys.isNotEmpty() &&
-                                                selectedKeys.all { it in favorites }
-                                            favorites = if (allAlreadyFavorite) {
-                                                favorites - selectedKeys
-                                            } else {
-                                                favorites + selectedKeys
+                                            if (searchText.isNotEmpty()) {
+                                                IconButton(
+                                                    onClick = { searchText = "" },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Outlined.Close,
+                                                        contentDescription = "Clear search",
+                                                        modifier = Modifier.size(18.dp),
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
                                             }
-                                            preferences.edit().putStringSet("favorites", favorites).apply()
-                                            selectedUris = emptySet()
-                                        }) {
-                                            Icon(Icons.Outlined.Star, contentDescription = "Toggle selected favorites")
-                                        }
-                                        IconButton(onClick = { showTrashConfirmation = true }) {
-                                            Icon(Icons.Outlined.Delete, contentDescription = "Move selected to trash")
+                                            if (selectedTab != FolioTab.SETTINGS) {
+                                                IconButton(
+                                                    onClick = { refreshKey++ },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Outlined.Refresh,
+                                                        contentDescription = "Refresh library",
+                                                        modifier = Modifier.size(18.dp),
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
-                                    IconButton(onClick = shareSelected) {
-                                        Icon(Icons.Outlined.Share, contentDescription = "Share selected")
-                                    }
-                                }
-                                IconButton(onClick = { selectedUris = emptySet() }) {
-                                    Icon(Icons.Outlined.Close, contentDescription = "Clear selection")
-                                }
-                            } else if (!pickerMode && selectedTab != FolioTab.SETTINGS && selectedTab != FolioTab.TRASH) {
-                                IconButton(onClick = { showSearch = !showSearch; searchText = "" }) {
-                                    Icon(Icons.Outlined.Search, contentDescription = "Search media")
-                                }
-                                IconButton(onClick = { refreshKey++ }) {
-                                    Icon(Icons.Outlined.Refresh, contentDescription = "Refresh library")
                                 }
                             }
                         }
-    
+
+                        // Tab Content Area
                         AnimatedContent(
                             targetState = selectedTab,
                             modifier = Modifier.weight(1f),
                             transitionSpec = {
-                                (
-                                    fadeIn(animationSpec = FolioMotion.contentEnter) +
-                                        slideInVertically(animationSpec = FolioMotion.screenSlide()) { it / 24 }
-                                ) togetherWith (
-                                    fadeOut(animationSpec = FolioMotion.contentExit) +
-                                        slideOutVertically(animationSpec = FolioMotion.screenSlide()) { -it / 24 }
-                                )
+                                (fadeIn(FolioMotion.contentEnter) + slideInVertically(FolioMotion.screenSlide()) { it / 24 }) togetherWith
+                                    (fadeOut(FolioMotion.contentExit) + slideOutVertically(FolioMotion.screenSlide()) { -it / 24 })
                             },
-                            label = "folio-root-tab"
+                            label = "folioTabContent"
                         ) { tab ->
                             FolioHomeScreen(
                                 tab = tab,
@@ -525,7 +632,6 @@ fun FolioApp(
                                 hasAccess = hasAccess,
                                 isLoading = isLoading,
                                 searchText = searchText,
-                                showSearch = showSearch,
                                 showVideos = showVideos,
                                 themeMode = themeMode,
                                 sortMode = sortMode,
@@ -535,7 +641,6 @@ fun FolioApp(
                                     preferences.edit().putStringSet("excluded_paths", excludedPaths).apply()
                                     refreshKey++
                                 },
-                                onSearchTextChanged = { searchText = it },
                                 onRequestAccess = {
                                     permissionLauncher.launch(FolioMediaRepository.permissionsToRequest())
                                 },
@@ -597,6 +702,46 @@ fun FolioApp(
                             )
                         }
                     }
+                }
+            }
+
+            // Single Persistent Floating Dock (Overlaid at bottom center, edge-to-edge content scrolls underneath)
+            if (!pickerMode) {
+                FolioBottomDock(
+                    selectedTab = selectedTab,
+                    viewerMode = selectedMedia != null,
+                    isScrolling = isScrollingDown,
+                    onTabSelected = {
+                        selectedTabName = it.name
+                        isScrollingDown = false
+                    },
+                    onShare = {
+                        selectedMedia?.let { item ->
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = item.mimeType
+                                putExtra(Intent.EXTRA_STREAM, item.uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(share, "Share media"))
+                        }
+                    },
+                    onEdit = {
+                        selectedMedia?.let { item ->
+                            val editIntent = Intent(Intent.ACTION_EDIT).apply {
+                                setClassName(context, "org.fossify.gallery.ui.editor.FolioEditorActivity")
+                                setDataAndType(item.uri, item.mimeType)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                            }
+                            context.startActivity(editIntent)
+                        }
+                    },
+                    onBack = { selectedMedia = null },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .imePadding()
+                        .padding(bottom = 12.dp)
+                )
             }
         }
 

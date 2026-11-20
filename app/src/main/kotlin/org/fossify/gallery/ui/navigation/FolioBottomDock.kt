@@ -1,23 +1,33 @@
 package org.fossify.gallery.ui.navigation
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
@@ -31,21 +41,29 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalConfiguration
 import org.fossify.gallery.ui.FolioTab
 import org.fossify.gallery.ui.theme.FolioMotion
 
 /**
- * Persistent floating dock. Its dimensions and spring timing follow MonoMail's
- * scaled 42dp DockTab model; viewer actions morph into the same dock footprint.
+ * Single, persistent, Material 3 Expressive floating bottom dock.
+ *
+ * Implements Monomail's signature floating navigation surface:
+ * - CircleShape pill container to eliminate rectangular shadow clipping artifacts.
+ * - Directional scroll hysteresis (drops smoothly on downward scroll; springs back on upward scroll / rest).
+ * - Animated tab expansion with Spring physics and icon-only resting state.
+ * - Cross-screen morphing into viewer action controls within the exact same footprint.
  */
 @Composable
 internal fun FolioBottomDock(
@@ -54,92 +72,122 @@ internal fun FolioBottomDock(
     onTabSelected: (FolioTab) -> Unit,
     onShare: () -> Unit,
     onEdit: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    isScrolling: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
-    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val selectedWidth = (screenWidth - 260.dp).coerceIn(80.dp, 120.dp)
+    // Vertical hide/reveal offset on scroll fling (Monomail & M3E FloatingToolbar pattern)
+    val animatedOffsetY by animateDpAsState(
+        targetValue = if (isScrolling && !viewerMode) 110.dp else 0.dp,
+        animationSpec = FolioMotion.gentle(),
+        label = "folioDockOffsetY"
+    )
 
-    Surface(
-        modifier = Modifier
+    Row(
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
-            .padding(top = 4.dp, bottom = 18.dp),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.97f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 1.dp,
-        shadowElevation = 6.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            .offset { IntOffset(x = 0, y = animatedOffsetY.roundToPx()) }
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        AnimatedContent(
-            targetState = viewerMode,
-            transitionSpec = {
-                (fadeIn(FolioMotion.contentEnter) + scaleIn(initialScale = 0.96f)) togetherWith
-                    (fadeOut(FolioMotion.contentExit) + scaleOut(targetScale = 0.96f))
-            },
-            label = "folio-dock-mode"
-        ) { inViewer ->
-            if (inViewer) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 6.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    ActionPill(Icons.Outlined.Share, "Share", onShare, Modifier.weight(1f))
-                    ActionPill(Icons.Outlined.Edit, "Edit", onEdit, Modifier.weight(1f))
-                    ActionPill(Icons.Outlined.ArrowBack, "Back", onBack, Modifier.weight(1f))
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 6.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FolioTab.entries.forEach { tab ->
-                        val selected = selectedTab == tab
-                        val targetWidth = if (selected) selectedWidth else 48.dp
-                        val itemWidth by androidx.compose.animation.core.animateDpAsState(
-                            targetValue = targetWidth,
-                            animationSpec = FolioMotion.gentle(),
-                            label = "folio-dock-width-${tab.name}"
-                        )
-                        val containerColor by androidx.compose.animation.animateColorAsState(
-                            targetValue = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-                            animationSpec = FolioMotion.snappy(),
-                            label = "folio-dock-container-${tab.name}"
-                        )
-                        val contentColor by androidx.compose.animation.animateColorAsState(
-                            targetValue = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            animationSpec = FolioMotion.snappy(),
-                            label = "folio-dock-content-${tab.name}"
-                        )
-                        val icon = when (tab) {
-                            FolioTab.PHOTOS -> Icons.Outlined.PhotoLibrary
-                            FolioTab.ALBUMS -> Icons.Outlined.FolderOpen
-                            FolioTab.FAVORITES -> Icons.Outlined.Star
-                            FolioTab.TRASH -> Icons.Outlined.Delete
-                            FolioTab.SETTINGS -> Icons.Outlined.Settings
-                        }
-                        Row(
-                            modifier = Modifier.width(itemWidth).height(42.dp)
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(containerColor)
-                                .clickable { onTabSelected(tab) }
-                                .padding(horizontal = 10.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(icon, contentDescription = tab.label, modifier = Modifier.size(22.dp), tint = contentColor)
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = selected,
-                                enter = fadeIn(androidx.compose.animation.core.tween(130, delayMillis = 35)) +
-                                    androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(180)),
-                                exit = fadeOut(androidx.compose.animation.core.tween(90)) +
-                                    androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(130))
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 2.dp,
+            shadowElevation = 8.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+            modifier = Modifier.animateContentSize(animationSpec = FolioMotion.gentle())
+        ) {
+            AnimatedContent(
+                targetState = viewerMode,
+                transitionSpec = {
+                    (fadeIn(FolioMotion.contentEnter) + scaleIn(initialScale = 0.94f)) togetherWith
+                        (fadeOut(FolioMotion.contentExit) + scaleOut(targetScale = 0.94f))
+                },
+                label = "folioDockMode"
+            ) { inViewer ->
+                if (inViewer) {
+                    Row(
+                        modifier = Modifier
+                            .height(54.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ActionPill(icon = Icons.Outlined.Share, label = "Share", onClick = onShare)
+                        ActionPill(icon = Icons.Outlined.Edit, label = "Edit", onClick = onEdit)
+                        ActionPill(icon = Icons.Outlined.ArrowBack, label = "Back", onClick = onBack)
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .height(54.dp)
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FolioTab.entries.forEach { tab ->
+                            val selected = selectedTab == tab
+                            val itemBgColor by animateColorAsState(
+                                targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                animationSpec = FolioMotion.snappy(),
+                                label = "tabBg_${tab.name}"
+                            )
+                            val itemContentColor by animateColorAsState(
+                                targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                animationSpec = FolioMotion.snappy(),
+                                label = "tabContent_${tab.name}"
+                            )
+                            val icon = when (tab) {
+                                FolioTab.PHOTOS -> Icons.Outlined.PhotoLibrary
+                                FolioTab.ALBUMS -> Icons.Outlined.FolderOpen
+                                FolioTab.FAVORITES -> Icons.Outlined.Star
+                                FolioTab.TRASH -> Icons.Outlined.Delete
+                                FolioTab.SETTINGS -> Icons.Outlined.Settings
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .clip(CircleShape)
+                                    .background(itemBgColor)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = ripple(bounded = true),
+                                        onClick = { onTabSelected(tab) }
+                                    )
+                                    .padding(horizontal = 12.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(tab.label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, maxLines = 1, color = contentColor)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = tab.label,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = itemContentColor
+                                    )
+                                    AnimatedVisibility(
+                                        visible = selected,
+                                        enter = expandHorizontally(FolioMotion.gentle()) + fadeIn(FolioMotion.contentEnter),
+                                        exit = shrinkHorizontally(FolioMotion.gentle()) + fadeOut(FolioMotion.contentExit)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = tab.label,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                color = itemContentColor
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -152,7 +200,7 @@ internal fun FolioBottomDock(
 
 @Composable
 private fun ActionPill(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -160,17 +208,19 @@ private fun ActionPill(
     Surface(
         onClick = onClick,
         modifier = modifier.height(42.dp),
-        shape = RoundedCornerShape(24.dp),
+        shape = CircleShape,
         color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        tonalElevation = 1.dp
     ) {
         Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(7.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
         }
     }
 }
