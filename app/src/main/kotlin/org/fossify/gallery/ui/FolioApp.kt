@@ -12,6 +12,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.provider.DocumentsContract
 import android.widget.Toast
+import androidx.activity.ExperimentalActivityApi
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -31,7 +32,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.abs
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
@@ -75,6 +75,7 @@ import org.fossify.gallery.ui.theme.FolioTheme
 import org.json.JSONArray
 import org.json.JSONObject
 
+@OptIn(ExperimentalActivityApi::class)
 @Composable
 fun FolioApp(
     pickerMode: Boolean = false,

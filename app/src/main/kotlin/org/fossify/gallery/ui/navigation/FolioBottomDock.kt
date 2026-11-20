@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalConfiguration
 import org.fossify.gallery.ui.FolioTab
 import org.fossify.gallery.ui.theme.FolioMotion
 
@@ -55,6 +56,9 @@ internal fun FolioBottomDock(
     onEdit: () -> Unit,
     onBack: () -> Unit
 ) {
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val selectedWidth = (screenWidth - 260.dp).coerceIn(80.dp, 120.dp)
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -93,7 +97,7 @@ internal fun FolioBottomDock(
                 ) {
                     FolioTab.entries.forEach { tab ->
                         val selected = selectedTab == tab
-                        val targetWidth = if (selected) 116.dp else 48.dp
+                        val targetWidth = if (selected) selectedWidth else 48.dp
                         val itemWidth by androidx.compose.animation.core.animateDpAsState(
                             targetValue = targetWidth,
                             animationSpec = FolioMotion.gentle(),
