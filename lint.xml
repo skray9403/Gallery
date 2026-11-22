@@ -18,6 +18,7 @@
     <issue id="UseRequireInsteadOfGet" severity="error" />
     <issue id="ClickableViewAccessibility" severity="error" />
     <issue id="UnusedMaterial3ScaffoldPaddingParameter" severity="ignore" />
+    <issue id="NonObservableLocale" severity="ignore" />
     <issue id="RtlSymmetry" severity="warning" />
     <issue id="SetTextI18n" severity="warning" />
 

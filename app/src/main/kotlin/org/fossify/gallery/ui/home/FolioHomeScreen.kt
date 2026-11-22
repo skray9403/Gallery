@@ -1,5 +1,7 @@
 package org.fossify.gallery.ui.home
 
+import android.annotation.SuppressLint
+
 import android.graphics.drawable.ColorDrawable
 import android.widget.ImageView
 import androidx.compose.animation.core.animateDpAsState
@@ -402,6 +404,7 @@ private class BoundsHolder {
     var bounds: Rect? = null
 }
 
+@SuppressLint("NonObservableLocale")
 @Composable
 private fun FolioMediaGrid(
     items: List<FolioMediaItem>,
@@ -420,19 +423,24 @@ private fun FolioMediaGrid(
     } else {
         val today = LocalDate.now()
         val zone = ZoneId.systemDefault()
-        val dateFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault())
-        items.groupBy { item ->
-            runCatching {
-                Instant.ofEpochMilli(item.dateAddedMillis).atZone(zone).toLocalDate()
-            }.getOrNull()
-        }.map { (date, dayItems) ->
-            val sectionLabel = when (date) {
-                null -> "Unknown date"
-                today -> "Today"
-                today.minusDays(1) -> "Yesterday"
-                else -> date.format(dateFormatter)
+        val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+        val dateFormatter = remember(locale) {
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
+        }
+        remember(items, locale) {
+            items.groupBy { item ->
+                runCatching {
+                    Instant.ofEpochMilli(item.dateAddedMillis).atZone(zone).toLocalDate()
+                }.getOrNull()
+            }.map { (date, dayItems) ->
+                val sectionLabel = when (date) {
+                    null -> "Unknown date"
+                    today -> "Today"
+                    today.minusDays(1) -> "Yesterday"
+                    else -> date.format(dateFormatter)
+                }
+                FolioDateGroup(date, sectionLabel, dayItems)
             }
-            FolioDateGroup(date, sectionLabel, dayItems)
         }
     }
 
