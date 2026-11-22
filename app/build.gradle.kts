@@ -192,6 +192,8 @@ dependencies {
     implementation(libs.exif)
     implementation(libs.android.gif.drawable)
     implementation(libs.androidx.lifecycle.runtime)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.media3.exoplayer)

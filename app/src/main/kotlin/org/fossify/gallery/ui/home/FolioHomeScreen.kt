@@ -64,6 +64,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.signature.ObjectKey
+import org.fossify.gallery.ui.FolioDateGroup
 import org.fossify.gallery.ui.FolioTab
 import org.fossify.gallery.ui.data.FolioAlbum
 import org.fossify.gallery.ui.data.FolioMediaItem
@@ -82,6 +83,7 @@ internal fun FolioHomeScreen(
     items: List<FolioMediaItem>,
     favoriteItems: List<FolioMediaItem>,
     trashItems: List<FolioMediaItem>,
+    dateGroups: List<FolioDateGroup> = emptyList(),
     hasAccess: Boolean,
     isLoading: Boolean,
     searchText: String,
@@ -151,6 +153,7 @@ internal fun FolioHomeScreen(
                 } else {
                     FolioMediaGrid(
                         items = searchResults,
+                        dateGroups = if (tab == FolioTab.PHOTOS && searchText.isBlank()) dateGroups else emptyList(),
                         onMediaClick = onMediaClick,
                         onToggleFavorite = onToggleFavorite,
                         onRestore = onRestore,
@@ -395,9 +398,14 @@ private fun EmptyFavorites() {
     }
 }
 
+private class BoundsHolder {
+    var bounds: Rect? = null
+}
+
 @Composable
 private fun FolioMediaGrid(
     items: List<FolioMediaItem>,
+    dateGroups: List<FolioDateGroup> = emptyList(),
     onMediaClick: (FolioMediaItem, Rect?) -> Unit,
     onToggleFavorite: (FolioMediaItem) -> Unit,
     onRestore: (FolioMediaItem) -> Unit,
@@ -407,17 +415,25 @@ private fun FolioMediaGrid(
     showFavoriteActions: Boolean,
     showRestoreActions: Boolean
 ) {
-    val dateGroups = remember(items) {
+    val groups = if (dateGroups.isNotEmpty()) {
+        dateGroups
+    } else {
+        val today = LocalDate.now()
         val zone = ZoneId.systemDefault()
+        val dateFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault())
         items.groupBy { item ->
             runCatching {
                 Instant.ofEpochMilli(item.dateAddedMillis).atZone(zone).toLocalDate()
             }.getOrNull()
-        }.entries.toList()
-    }
-    val today = LocalDate.now()
-    val dateFormatter = remember {
-        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault())
+        }.map { (date, dayItems) ->
+            val sectionLabel = when (date) {
+                null -> "Unknown date"
+                today -> "Today"
+                today.minusDays(1) -> "Yesterday"
+                else -> date.format(dateFormatter)
+            }
+            FolioDateGroup(date, sectionLabel, dayItems)
+        }
     }
 
     LazyVerticalGrid(
@@ -427,20 +443,14 @@ private fun FolioMediaGrid(
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        dateGroups.forEach { (date, dayItems) ->
-            val sectionLabel = when (date) {
-                null -> "Unknown date"
-                today -> "Today"
-                today.minusDays(1) -> "Yesterday"
-                else -> date.format(dateFormatter)
-            }
+        groups.forEach { group ->
             item(
-                key = "date-header-${date ?: "unknown"}",
+                key = "date-header-${group.date ?: "unknown"}",
                 span = { GridItemSpan(maxLineSpan) },
                 contentType = "header"
             ) {
                 Text(
-                    text = sectionLabel,
+                    text = group.label,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 14.dp, top = 16.dp, bottom = 6.dp),
@@ -450,110 +460,128 @@ private fun FolioMediaGrid(
                 )
             }
             items(
-                dayItems,
+                group.items,
                 key = { it.uri.toString() },
                 contentType = { if (it.isVideo) "video" else "photo" }
             ) { item ->
-                val isSelected = item.uri.toString() in selectedUris
-                val cornerRadius = if (selectedUris.isEmpty()) {
-                    4.dp
-                } else {
-                    animateDpAsState(
-                        targetValue = if (isSelected) 16.dp else 4.dp,
-                        animationSpec = FolioMotion.gentle(),
-                        label = "mediaCornerRadius"
-                    ).value
-                }
-                var itemBounds by remember { mutableStateOf<Rect?>(null) }
+                FolioMediaCell(
+                    item = item,
+                    isSelected = item.uri.toString() in selectedUris,
+                    hasSelection = selectedUris.isNotEmpty(),
+                    showFavoriteActions = showFavoriteActions,
+                    showRestoreActions = showRestoreActions,
+                    onMediaClick = onMediaClick,
+                    onMediaLongClick = onMediaLongClick,
+                    onToggleSelection = onToggleSelection,
+                    onToggleFavorite = onToggleFavorite,
+                    onRestore = onRestore
+                )
+            }
+        }
+    }
+}
 
+@Composable
+private fun FolioMediaCell(
+    item: FolioMediaItem,
+    isSelected: Boolean,
+    hasSelection: Boolean,
+    showFavoriteActions: Boolean,
+    showRestoreActions: Boolean,
+    onMediaClick: (FolioMediaItem, Rect?) -> Unit,
+    onMediaLongClick: (FolioMediaItem) -> Unit,
+    onToggleSelection: (FolioMediaItem) -> Unit,
+    onToggleFavorite: (FolioMediaItem) -> Unit,
+    onRestore: (FolioMediaItem) -> Unit
+) {
+    val boundsHolder = remember { BoundsHolder() }
+    val shape = if (isSelected) RoundedCornerShape(14.dp) else RoundedCornerShape(4.dp)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .onGloballyPositioned { coords -> boundsHolder.bounds = coords.boundsInRoot() }
+            .combinedClickable(
+                onClick = {
+                    if (hasSelection) onToggleSelection(item)
+                    else onMediaClick(item, boundsHolder.bounds)
+                },
+                onLongClick = { onMediaLongClick(item) }
+            ),
+        shape = shape,
+        border = if (isSelected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
+        color = MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            FolioThumbnail(item, Modifier.fillMaxSize())
+            if (isSelected) {
                 Surface(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
-                        .combinedClickable(
-                            onClick = {
-                                if (selectedUris.isNotEmpty()) onToggleSelection(item)
-                                else onMediaClick(item, itemBounds)
-                            },
-                            onLongClick = { onMediaLongClick(item) }
-                        ),
-                    shape = RoundedCornerShape(cornerRadius),
-                    border = if (isSelected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
-                    color = MaterialTheme.colorScheme.surfaceContainer
+                        .align(Alignment.TopStart)
+                        .padding(8.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shadowElevation = 2.dp
                 ) {
-                    Box(Modifier.fillMaxSize()) {
-                        FolioThumbnail(item, Modifier.fillMaxSize())
-                        if (isSelected) {
-                            Surface(
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(8.dp),
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                shadowElevation = 2.dp
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Check,
-                                    contentDescription = "Selected",
-                                    modifier = Modifier
-                                        .padding(4.dp)
-                                        .size(16.dp)
-                                )
-                            }
-                        }
-                        if (item.isVideo) {
-                            Surface(
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(6.dp),
-                                shape = CircleShape,
-                                color = Color.Black.copy(alpha = 0.65f),
-                                contentColor = Color.White
-                            ) {
-                                Icon(
-                                    Icons.Outlined.PlayArrow,
-                                    contentDescription = "Video",
-                                    modifier = Modifier
-                                        .padding(4.dp)
-                                        .size(16.dp)
-                                )
-                            }
-                        }
-                        if (showFavoriteActions) {
-                            IconButton(
-                                onClick = { onToggleFavorite(item) },
-                                modifier = Modifier.align(Alignment.TopEnd)
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Star,
-                                    contentDescription = "Remove favorite",
-                                    tint = Color.White
-                                )
-                            }
-                        }
-                        if (showRestoreActions) {
-                            Surface(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(6.dp),
-                                shape = CircleShape,
-                                color = Color.Black.copy(alpha = 0.65f)
-                            ) {
-                                IconButton(
-                                    onClick = { onRestore(item) },
-                                    modifier = Modifier.size(34.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Restore,
-                                        contentDescription = "Restore media",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
+                    Icon(
+                        Icons.Outlined.Check,
+                        contentDescription = "Selected",
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .size(16.dp)
+                    )
+                }
+            }
+            if (item.isVideo) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp),
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.65f),
+                    contentColor = Color.White
+                ) {
+                    Icon(
+                        Icons.Outlined.PlayArrow,
+                        contentDescription = "Video",
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .size(16.dp)
+                    )
+                }
+            }
+            if (showFavoriteActions) {
+                IconButton(
+                    onClick = { onToggleFavorite(item) },
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Icon(
+                        Icons.Outlined.Star,
+                        contentDescription = "Remove favorite",
+                        tint = Color.White
+                    )
+                }
+            }
+            if (showRestoreActions) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp),
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.65f)
+                ) {
+                    IconButton(
+                        onClick = { onRestore(item) },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.Restore,
+                            contentDescription = "Restore media",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
@@ -635,14 +663,20 @@ private fun FolioThumbnail(item: FolioMediaItem, modifier: Modifier = Modifier) 
             if (view.tag != cacheKey) {
                 view.tag = cacheKey
                 Glide.with(view)
+                    .asBitmap()
                     .load(item.uri)
                     .signature(ObjectKey(cacheKey))
-                    .override(280, 280)
+                    .override(240, 240)
+                    .format(com.bumptech.glide.load.DecodeFormat.PREFER_RGB_565)
                     .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
                     .placeholder(ColorDrawable(android.graphics.Color.rgb(232, 234, 239)))
                     .centerCrop()
                     .into(view)
             }
+        },
+        onRelease = { view ->
+            Glide.with(view).clear(view)
+            view.tag = null
         }
     )
 }

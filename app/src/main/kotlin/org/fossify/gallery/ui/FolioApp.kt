@@ -3,13 +3,9 @@ package org.fossify.gallery.ui
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ClipData
-import android.content.Context
 import android.content.Intent
-import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.widget.Toast
@@ -59,15 +55,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,8 +75,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import org.fossify.gallery.ui.data.FolioMediaItem
 import org.fossify.gallery.ui.data.FolioMediaRepository
 import org.fossify.gallery.ui.home.FolioHomeScreen
@@ -102,38 +95,12 @@ fun FolioApp(
     initialUri: Uri? = null,
     launchRevision: Int = 0,
     initialTab: String = FolioTab.PHOTOS.name,
+    viewModel: FolioViewModel = viewModel(),
     onMediaPicked: (List<Uri>) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val preferences = remember(context) {
-        context.getSharedPreferences("folio_preferences", Context.MODE_PRIVATE)
-    }
-    var selectedTabName by rememberSaveable(launchRevision) {
-        mutableStateOf(initialTab.takeIf { candidate -> FolioTab.entries.any { it.name == candidate } } ?: FolioTab.PHOTOS.name)
-    }
-    var selectedMedia by remember { mutableStateOf<FolioMediaItem?>(null) }
-    var selectedSourceRect by remember { mutableStateOf<Rect?>(null) }
+    val uiState by viewModel.uiState.collectAsState()
     var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
-    var mediaItems by remember { mutableStateOf<List<FolioMediaItem>>(emptyList()) }
-    var trashItems by remember { mutableStateOf<List<FolioMediaItem>>(emptyList()) }
-    var hasAccess by remember { mutableStateOf(FolioMediaRepository.hasMediaAccess(context)) }
-    var isLoading by remember { mutableStateOf(false) }
-    var refreshKey by remember { mutableStateOf(0) }
-    var searchText by rememberSaveable { mutableStateOf("") }
-    var showVideos by remember { mutableStateOf(preferences.getBoolean("show_videos", true)) }
-    var themeMode by remember {
-        mutableStateOf(preferences.getString("theme_mode", "SYSTEM") ?: "SYSTEM")
-    }
-    var sortMode by remember {
-        mutableStateOf(preferences.getString("sort_mode", "DATE_DESC") ?: "DATE_DESC")
-    }
-    var favorites by remember {
-        mutableStateOf(preferences.getStringSet("favorites", emptySet()).orEmpty().toSet())
-    }
-    var excludedPaths by remember {
-        mutableStateOf(preferences.getStringSet("excluded_paths", emptySet()).orEmpty().toSet())
-    }
-    var selectedUris by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showTrashConfirmation by remember { mutableStateOf(false) }
 
     // Directional scroll hysteresis (Monomail preference: hides dock when scrolling down, reveals on scroll up)
@@ -155,21 +122,25 @@ fun FolioApp(
     val trashRequestLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) refreshKey++
-        selectedUris = emptySet()
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.onEvent(FolioUiEvent.Refresh)
+        }
+        viewModel.onEvent(FolioUiEvent.ClearSelection)
     }
+
     val restoreRequestLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) refreshKey++
-        selectedUris = emptySet()
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.onEvent(FolioUiEvent.Refresh)
+        }
+        viewModel.onEvent(FolioUiEvent.ClearSelection)
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        hasAccess = FolioMediaRepository.hasMediaAccess(context)
-        refreshKey++
+        viewModel.onEvent(FolioUiEvent.PermissionStatusChanged(true))
     }
 
     val excludeFolderLauncher = rememberLauncherForActivityResult(
@@ -184,9 +155,7 @@ fun FolioApp(
                 DocumentsContract.getTreeDocumentId(treeUri).substringAfter(':').trim('/')
             }.getOrNull().orEmpty()
             if (folderPath.isNotBlank()) {
-                excludedPaths = excludedPaths + folderPath
-                preferences.edit().putStringSet("excluded_paths", excludedPaths).apply()
-                refreshKey++
+                viewModel.onEvent(FolioUiEvent.ExcludeFolder(folderPath))
                 Toast.makeText(context, "Folder excluded from Folio", Toast.LENGTH_LONG).show()
             } else {
                 Toast.makeText(context, "Could not identify this folder", Toast.LENGTH_LONG).show()
@@ -209,7 +178,7 @@ fun FolioApp(
                 else -> "This folder provider does not allow creating .nomedia"
             }
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-            refreshKey++
+            viewModel.onEvent(FolioUiEvent.Refresh)
         }
     }
 
@@ -221,11 +190,11 @@ fun FolioApp(
                 val payload = JSONObject()
                     .put("format", "folio-settings")
                     .put("version", 1)
-                    .put("showVideos", showVideos)
-                    .put("themeMode", themeMode)
-                    .put("sortMode", sortMode)
-                    .put("favorites", JSONArray(favorites.toList()))
-                    .put("excludedPaths", JSONArray(excludedPaths.toList()))
+                    .put("showVideos", uiState.showVideos)
+                    .put("themeMode", uiState.themeMode)
+                    .put("sortMode", uiState.sortMode)
+                    .put("favorites", JSONArray(uiState.favorites.toList()))
+                    .put("excludedPaths", JSONArray(uiState.excludedPaths.toList()))
                 val output = context.contentResolver.openOutputStream(destination)
                     ?: error("Unable to open the selected destination")
                 output.bufferedWriter().use { writer -> writer.write(payload.toString(2)) }
@@ -270,18 +239,15 @@ fun FolioApp(
                     .uppercase()
                     .takeIf { it in setOf("SYSTEM", "LIGHT", "DARK") } ?: "SYSTEM"
 
-                favorites = importedFavorites
-                excludedPaths = importedExcludedPaths
-                showVideos = importedShowVideos
-                themeMode = importedTheme
-                sortMode = importedSort
-                preferences.edit()
-                    .putStringSet("favorites", importedFavorites)
-                    .putStringSet("excluded_paths", importedExcludedPaths)
-                    .putBoolean("show_videos", importedShowVideos)
-                    .putString("theme_mode", importedTheme)
-                    .putString("sort_mode", importedSort)
-                    .apply()
+                viewModel.onEvent(
+                    FolioUiEvent.ImportSettings(
+                        favorites = importedFavorites,
+                        excludedPaths = importedExcludedPaths,
+                        showVideos = importedShowVideos,
+                        themeMode = importedTheme,
+                        sortMode = importedSort
+                    )
+                )
             }
             Toast.makeText(
                 context,
@@ -292,80 +258,20 @@ fun FolioApp(
         }
     }
 
-    DisposableEffect(context) {
-        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean, uri: Uri?) {
-                refreshKey++
-            }
-        }
-        val imageUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        val videoUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        context.contentResolver.registerContentObserver(imageUri, true, observer)
-        context.contentResolver.registerContentObserver(videoUri, true, observer)
-        onDispose {
-            context.contentResolver.unregisterContentObserver(observer)
-        }
-    }
-
-    LaunchedEffect(hasAccess, refreshKey, excludedPaths) {
-        if (hasAccess) {
-            isLoading = true
-            val loaded = withContext(Dispatchers.IO) {
-                FolioMediaRepository.loadMedia(context, excludedPaths) to
-                    FolioMediaRepository.loadTrash(context)
-            }
-            mediaItems = loaded.first
-            trashItems = loaded.second
-            isLoading = false
-        } else {
-            mediaItems = emptyList()
-            trashItems = emptyList()
-        }
-    }
-
-    LaunchedEffect(launchRevision, pickerMode, pickerMimeType, allowMultiple) {
-        selectedUris = emptySet()
-        showTrashConfirmation = false
-        isScrollingDown = false
-        if (pickerMode) {
-            selectedMedia = null
-            selectedTabName = FolioTab.PHOTOS.name
-            searchText = ""
-        } else if (initialUri == null) {
-            selectedMedia = null
-        }
-    }
-
-    LaunchedEffect(initialUri, pickerMode, mediaItems) {
-        if (initialUri != null && !pickerMode && selectedMedia?.uri != initialUri) {
-            selectedMedia = mediaItems.firstOrNull { it.uri == initialUri }
-                ?: withContext(Dispatchers.IO) {
-                    FolioMediaRepository.loadSingle(context, initialUri)
-                }
-        }
-    }
-
-    val selectedTab = FolioTab.valueOf(selectedTabName)
-    val filteredItems = if (showVideos) mediaItems else mediaItems.filterNot(FolioMediaItem::isVideo)
-    val sortedItems = when (sortMode) {
-        "NAME_ASC" -> filteredItems.sortedBy { it.displayName.lowercase() }
-        "SIZE_DESC" -> filteredItems.sortedByDescending(FolioMediaItem::sizeBytes)
-        else -> filteredItems.sortedByDescending(FolioMediaItem::dateAddedMillis)
-    }
-    val visibleItems = sortedItems.filter { item ->
-        when {
-            !pickerMode -> true
-            pickerMimeType.isNullOrBlank() || pickerMimeType == "*/*" -> true
-            pickerMimeType.endsWith("/*") -> item.mimeType.startsWith(
-                pickerMimeType.removeSuffix("*"),
-                ignoreCase = true
+    LaunchedEffect(launchRevision, pickerMode, pickerMimeType, allowMultiple, initialUri, initialTab) {
+        viewModel.onEvent(
+            FolioUiEvent.ConfigurePicker(
+                pickerMode = pickerMode,
+                mimeType = pickerMimeType,
+                allowMultiple = allowMultiple,
+                initialUri = initialUri,
+                initialTab = initialTab
             )
-            else -> item.mimeType.equals(pickerMimeType, ignoreCase = true)
-        }
+        )
     }
-    val favoriteItems = visibleItems.filter { it.uri.toString() in favorites }
-    val selectionSource = if (selectedTab == FolioTab.TRASH) trashItems else visibleItems
-    val selectedItems = selectionSource.filter { it.uri.toString() in selectedUris }
+
+    val selectionSource = if (uiState.selectedTab == FolioTab.TRASH) uiState.trashItems else uiState.visibleItems
+    val selectedItems = selectionSource.filter { it.uri.toString() in uiState.selectedUris }
 
     val shareSelected: () -> Unit = {
         val selectedUrisForShare = selectedItems.map { it.uri }
@@ -394,33 +300,31 @@ fun FolioApp(
         }
     }
 
-    PredictiveBackHandler(enabled = selectedMedia != null) { events ->
+    PredictiveBackHandler(enabled = uiState.selectedMedia != null) { events ->
         try {
             events.collect { event -> predictiveBackProgress = event.progress }
             predictiveBackProgress = 0f
-            selectedMedia = null
-            selectedSourceRect = null
+            viewModel.onEvent(FolioUiEvent.CloseViewer)
             isScrollingDown = false
         } catch (_: kotlinx.coroutines.CancellationException) {
             predictiveBackProgress = 0f
         }
     }
 
-    FolioTheme(themeMode = themeMode) {
+    FolioTheme(themeMode = uiState.themeMode) {
         Box(modifier = Modifier.fillMaxSize()) {
             Scaffold(
-                containerColor = if (selectedMedia != null) Color.Black
+                containerColor = if (uiState.selectedMedia != null) Color.Black
                     else MaterialTheme.colorScheme.surface,
                 contentWindowInsets = WindowInsets(0, 0, 0, 0)
             ) { contentPadding ->
-                if (selectedMedia != null) {
+                if (uiState.selectedMedia != null) {
                     FolioViewer(
-                        item = selectedMedia!!,
+                        item = uiState.selectedMedia!!,
                         backProgress = predictiveBackProgress,
-                        sourceRect = selectedSourceRect,
+                        sourceRect = uiState.selectedSourceRect,
                         onBack = {
-                            selectedMedia = null
-                            selectedSourceRect = null
+                            viewModel.onEvent(FolioUiEvent.CloseViewer)
                         },
                         modifier = Modifier
                             .fillMaxSize()
@@ -436,7 +340,7 @@ fun FolioApp(
                     ) {
                         // Expressive Top Header & Contextual Selection Bar
                         AnimatedContent(
-                            targetState = selectedUris.isNotEmpty(),
+                            targetState = uiState.isSelectionMode,
                             transitionSpec = {
                                 (fadeIn(FolioMotion.contentEnter) + slideInVertically(FolioMotion.screenSlide()) { -it / 4 }) togetherWith
                                     (fadeOut(FolioMotion.contentExit) + slideOutVertically(FolioMotion.screenSlide()) { -it / 4 })
@@ -461,11 +365,11 @@ fun FolioApp(
                                             .padding(horizontal = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        IconButton(onClick = { selectedUris = emptySet() }) {
+                                        IconButton(onClick = { viewModel.onEvent(FolioUiEvent.ClearSelection) }) {
                                             Icon(Icons.Outlined.Close, contentDescription = "Clear selection")
                                         }
                                         Text(
-                                            text = "${selectedUris.size} selected",
+                                            text = "${uiState.selectedUris.size} selected",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier.padding(start = 4.dp)
@@ -479,13 +383,10 @@ fun FolioApp(
                                                 Icon(Icons.Outlined.Check, contentDescription = "Use selected media")
                                             }
                                         } else {
-                                            IconButton(onClick = {
-                                                val allVisible = selectionSource.map { it.uri.toString() }.toSet()
-                                                selectedUris = if (selectedUris.containsAll(allVisible)) emptySet() else allVisible
-                                            }) {
+                                            IconButton(onClick = { viewModel.onEvent(FolioUiEvent.SelectAll) }) {
                                                 Icon(Icons.Outlined.Check, contentDescription = "Select all")
                                             }
-                                            if (selectedTab == FolioTab.TRASH) {
+                                            if (uiState.selectedTab == FolioTab.TRASH) {
                                                 IconButton(onClick = {
                                                    if (Build.VERSION.SDK_INT >= 30 && selectedItems.isNotEmpty()) {
                                                         val pendingIntent = MediaStore.createTrashRequest(
@@ -502,12 +403,8 @@ fun FolioApp(
                                                 }
                                             } else {
                                                 IconButton(onClick = {
-                                                    val selectedKeys = selectedItems.map { it.uri.toString() }.toSet()
-                                                    val allAlreadyFavorite = selectedKeys.isNotEmpty() &&
-                                                        selectedKeys.all { it in favorites }
-                                                    favorites = if (allAlreadyFavorite) favorites - selectedKeys else favorites + selectedKeys
-                                                    preferences.edit().putStringSet("favorites", favorites).apply()
-                                                    selectedUris = emptySet()
+                                                    selectedItems.forEach { viewModel.onEvent(FolioUiEvent.ToggleFavorite(it)) }
+                                                    viewModel.onEvent(FolioUiEvent.ClearSelection)
                                                 }) {
                                                     Icon(Icons.Outlined.Star, contentDescription = "Toggle favorites")
                                                 }
@@ -569,9 +466,9 @@ fun FolioApp(
                                             )
                                             Spacer(Modifier.width(10.dp))
                                             Box(modifier = Modifier.weight(1f)) {
-                                                if (searchText.isEmpty()) {
+                                                if (uiState.searchText.isEmpty()) {
                                                     Text(
-                                                        text = when (selectedTab) {
+                                                        text = when (uiState.selectedTab) {
                                                             FolioTab.PHOTOS -> "Search photos and videos…"
                                                             FolioTab.ALBUMS -> "Search albums and folders…"
                                                             FolioTab.FAVORITES -> "Search favorites…"
@@ -582,10 +479,10 @@ fun FolioApp(
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
-                                                if (selectedTab != FolioTab.SETTINGS) {
+                                                if (uiState.selectedTab != FolioTab.SETTINGS) {
                                                     BasicTextField(
-                                                        value = searchText,
-                                                        onValueChange = { searchText = it },
+                                                        value = uiState.searchText,
+                                                        onValueChange = { viewModel.onEvent(FolioUiEvent.SearchChanged(it)) },
                                                         singleLine = true,
                                                         textStyle = MaterialTheme.typography.bodyLarge.copy(
                                                             color = MaterialTheme.colorScheme.onSurface
@@ -595,9 +492,9 @@ fun FolioApp(
                                                     )
                                                 }
                                             }
-                                            if (searchText.isNotEmpty()) {
+                                            if (uiState.searchText.isNotEmpty()) {
                                                 IconButton(
-                                                    onClick = { searchText = "" },
+                                                    onClick = { viewModel.onEvent(FolioUiEvent.SearchChanged("")) },
                                                     modifier = Modifier.size(32.dp)
                                                 ) {
                                                     Icon(
@@ -608,9 +505,9 @@ fun FolioApp(
                                                     )
                                                 }
                                             }
-                                            if (selectedTab != FolioTab.SETTINGS) {
+                                            if (uiState.selectedTab != FolioTab.SETTINGS) {
                                                 IconButton(
-                                                    onClick = { refreshKey++ },
+                                                    onClick = { viewModel.onEvent(FolioUiEvent.Refresh) },
                                                     modifier = Modifier.size(32.dp)
                                                 ) {
                                                     Icon(
@@ -629,7 +526,7 @@ fun FolioApp(
 
                         // Tab Content Area
                         AnimatedContent(
-                            targetState = selectedTab,
+                            targetState = uiState.selectedTab,
                             modifier = Modifier.weight(1f),
                             transitionSpec = {
                                 (fadeIn(FolioMotion.contentEnter) + slideInVertically(FolioMotion.screenSlide()) { it / 24 }) togetherWith
@@ -639,66 +536,57 @@ fun FolioApp(
                         ) { tab ->
                             FolioHomeScreen(
                                 tab = tab,
-                                items = visibleItems,
-                                favoriteItems = favoriteItems,
-                                trashItems = trashItems,
-                                hasAccess = hasAccess,
-                                isLoading = isLoading,
-                                searchText = searchText,
-                                showVideos = showVideos,
-                                themeMode = themeMode,
-                                sortMode = sortMode,
-                                excludedPaths = excludedPaths,
+                                items = uiState.visibleItems,
+                                favoriteItems = uiState.favoriteItems,
+                                trashItems = uiState.trashItems,
+                                dateGroups = uiState.dateGroups,
+                                hasAccess = uiState.hasAccess,
+                                isLoading = uiState.isLoading,
+                                searchText = uiState.searchText,
+                                showVideos = uiState.showVideos,
+                                themeMode = uiState.themeMode,
+                                sortMode = uiState.sortMode,
+                                excludedPaths = uiState.excludedPaths,
                                 onRemoveExcludedPath = { path ->
-                                    excludedPaths = excludedPaths - path
-                                    preferences.edit().putStringSet("excluded_paths", excludedPaths).apply()
-                                    refreshKey++
+                                    viewModel.onEvent(FolioUiEvent.RemoveExcludedPath(path))
                                 },
                                 onRequestAccess = {
                                     permissionLauncher.launch(FolioMediaRepository.permissionsToRequest())
                                 },
-                                selectedUris = selectedUris,
+                                selectedUris = uiState.selectedUris,
                                 onMediaClick = { item, bounds ->
                                     if (pickerMode && !allowMultiple) {
                                         onMediaPicked(listOf(item.uri))
-                                    } else if (pickerMode || selectedUris.isNotEmpty()) {
-                                        selectedUris = selectedUris + item.uri.toString()
+                                    } else if (pickerMode || uiState.isSelectionMode) {
+                                        viewModel.onEvent(FolioUiEvent.ToggleSelection(item))
                                     } else {
-                                        selectedSourceRect = bounds
-                                        selectedMedia = item
+                                        viewModel.onEvent(FolioUiEvent.MediaClicked(item, bounds))
                                     }
                                 },
                                 onMediaLongClick = {
                                     if (!pickerMode || allowMultiple) {
-                                        selectedUris = selectedUris + it.uri.toString()
+                                        viewModel.onEvent(FolioUiEvent.MediaLongClicked(it))
                                     }
                                 },
                                 onToggleSelection = { item ->
-                                    selectedUris = if (item.uri.toString() in selectedUris) {
-                                        selectedUris - item.uri.toString()
-                                    } else {
-                                        selectedUris + item.uri.toString()
-                                    }
+                                    viewModel.onEvent(FolioUiEvent.ToggleSelection(item))
                                 },
                                 onRestore = { item ->
-                                    if (FolioMediaRepository.restore(context, item.uri)) refreshKey++
+                                    if (FolioMediaRepository.restore(context, item.uri)) {
+                                        viewModel.onEvent(FolioUiEvent.Refresh)
+                                    }
                                 },
                                 onToggleFavorite = { item ->
-                                    val key = item.uri.toString()
-                                    favorites = if (key in favorites) favorites - key else favorites + key
-                                    preferences.edit().putStringSet("favorites", favorites).apply()
+                                    viewModel.onEvent(FolioUiEvent.ToggleFavorite(item))
                                 },
                                 onShowVideosChanged = {
-                                    showVideos = it
-                                    preferences.edit().putBoolean("show_videos", it).apply()
+                                    viewModel.onEvent(FolioUiEvent.ShowVideosToggled(it))
                                 },
                                 onThemeModeChanged = {
-                                    themeMode = it
-                                    preferences.edit().putString("theme_mode", it).apply()
+                                    viewModel.onEvent(FolioUiEvent.ThemeModeChanged(it))
                                 },
                                 onSortModeChanged = {
-                                    sortMode = it
-                                    preferences.edit().putString("sort_mode", it).apply()
+                                    viewModel.onEvent(FolioUiEvent.SortModeChanged(it))
                                 },
                                 onExportSettings = {
                                     exportSettingsLauncher.launch("folio-settings.json")
@@ -712,7 +600,7 @@ fun FolioApp(
                                 onExcludeFolder = {
                                     excludeFolderLauncher.launch(null)
                                 },
-                                onRefresh = { refreshKey++ }
+                                onRefresh = { viewModel.onEvent(FolioUiEvent.Refresh) }
                             )
                         }
                     }
@@ -722,15 +610,15 @@ fun FolioApp(
             // Single Persistent Floating Dock (Overlaid at bottom center, edge-to-edge content scrolls underneath)
             if (!pickerMode) {
                 FolioBottomDock(
-                    selectedTab = selectedTab,
-                    viewerMode = selectedMedia != null,
+                    selectedTab = uiState.selectedTab,
+                    viewerMode = uiState.selectedMedia != null,
                     isScrolling = isScrollingDown,
                     onTabSelected = {
-                        selectedTabName = it.name
+                        viewModel.onEvent(FolioUiEvent.SelectTab(it))
                         isScrollingDown = false
                     },
                     onShare = {
-                        selectedMedia?.let { item ->
+                        uiState.selectedMedia?.let { item ->
                             val share = Intent(Intent.ACTION_SEND).apply {
                                 type = item.mimeType
                                 putExtra(Intent.EXTRA_STREAM, item.uri)
@@ -740,7 +628,7 @@ fun FolioApp(
                         }
                     },
                     onEdit = {
-                        selectedMedia?.let { item ->
+                        uiState.selectedMedia?.let { item ->
                             val editIntent = Intent(Intent.ACTION_EDIT).apply {
                                 setClassName(context, "org.fossify.gallery.ui.editor.FolioEditorActivity")
                                 setDataAndType(item.uri, item.mimeType)
@@ -760,8 +648,8 @@ fun FolioApp(
                         }
                     },
                     onDelete = {
-                        selectedMedia?.let {
-                            selectedUris = setOf(it.uri.toString())
+                        uiState.selectedMedia?.let {
+                            viewModel.onEvent(FolioUiEvent.ToggleSelection(it))
                             showTrashConfirmation = true
                         }
                     },
@@ -784,8 +672,7 @@ fun FolioApp(
                 confirmButton = {
                     TextButton(onClick = {
                         showTrashConfirmation = false
-                        selectedMedia = null
-                        selectedSourceRect = null
+                        viewModel.onEvent(FolioUiEvent.CloseViewer)
                         val selected = selectedItems
                         if (selected.isNotEmpty()) {
                             if (Build.VERSION.SDK_INT >= 30) {
@@ -801,8 +688,8 @@ fun FolioApp(
                                 selected.forEach { item ->
                                     runCatching { context.contentResolver.delete(item.uri, null, null) }
                                 }
-                                refreshKey++
-                                selectedUris = emptySet()
+                                viewModel.onEvent(FolioUiEvent.Refresh)
+                                viewModel.onEvent(FolioUiEvent.ClearSelection)
                             }
                         }
                     }) { Text("Move to trash") }
@@ -813,12 +700,4 @@ fun FolioApp(
             )
         }
     }
-}
-
-internal enum class FolioTab(val label: String) {
-    PHOTOS("Photos"),
-    ALBUMS("Albums"),
-    FAVORITES("Favorites"),
-    TRASH("Trash"),
-    SETTINGS("Settings")
 }
