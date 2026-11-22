@@ -29,14 +29,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -73,12 +76,15 @@ internal fun FolioBottomDock(
     onShare: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit = {},
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
+    onInfo: () -> Unit = {},
     isScrolling: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    // Vertical hide/reveal offset on scroll fling (Monomail & M3E FloatingToolbar pattern)
+    // Vertical hide/reveal offset on scroll fling or immersive mode
     val animatedOffsetY by animateDpAsState(
-        targetValue = if (isScrolling && !viewerMode) 110.dp else 0.dp,
+        targetValue = if (isScrolling) 110.dp else 0.dp,
         animationSpec = FolioMotion.gentle(),
         label = "folioDockOffsetY"
     )
@@ -112,13 +118,36 @@ internal fun FolioBottomDock(
                     Row(
                         modifier = Modifier
                             .height(54.dp)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        ActionPill(icon = Icons.Outlined.Share, label = "Share", onClick = onShare)
-                        ActionPill(icon = Icons.Outlined.Edit, label = "Edit", onClick = onEdit)
-                        ActionPill(icon = Icons.Outlined.Delete, label = "Delete", onClick = onDelete)
+                        ActionIconButton(
+                            icon = Icons.Outlined.Share,
+                            contentDescription = "Share",
+                            onClick = onShare
+                        )
+                        ActionIconButton(
+                            icon = Icons.Outlined.Edit,
+                            contentDescription = "Edit",
+                            onClick = onEdit
+                        )
+                        ActionIconButton(
+                            icon = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                            contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                            onClick = onToggleFavorite,
+                            selected = isFavorite
+                        )
+                        ActionIconButton(
+                            icon = Icons.Outlined.Info,
+                            contentDescription = "Details",
+                            onClick = onInfo
+                        )
+                        ActionIconButton(
+                            icon = Icons.Outlined.Delete,
+                            contentDescription = "Delete",
+                            onClick = onDelete
+                        )
                     }
                 } else {
                     Row(
@@ -199,28 +228,34 @@ internal fun FolioBottomDock(
 }
 
 @Composable
-private fun ActionPill(
+private fun ActionIconButton(
     icon: ImageVector,
-    label: String,
+    contentDescription: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    selected: Boolean = false
 ) {
+    val bgColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+        animationSpec = FolioMotion.snappy(),
+        label = "actionIconBg"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        animationSpec = FolioMotion.snappy(),
+        label = "actionIconContent"
+    )
+
     Surface(
         onClick = onClick,
-        modifier = modifier.height(42.dp),
+        modifier = modifier.size(42.dp),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        color = bgColor,
+        contentColor = contentColor,
         tonalElevation = 1.dp
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(20.dp))
         }
     }
 }

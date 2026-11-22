@@ -1,31 +1,49 @@
 package org.fossify.gallery.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,15 +66,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.viewinterop.AndroidView
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
-import java.util.Locale
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -77,27 +91,65 @@ import kotlinx.coroutines.launch
 import org.fossify.gallery.helpers.MyGlideImageDecoder
 import org.fossify.gallery.helpers.PicassoRegionDecoder
 import org.fossify.gallery.ui.data.FolioMediaItem
+import org.fossify.gallery.ui.details.FolioDetailsBottomSheet
 import org.fossify.gallery.ui.theme.FolioMotion
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 
+@SuppressLint("NonObservableLocale")
 @Composable
 internal fun FolioViewer(
-    item: FolioMediaItem,
+    items: List<FolioMediaItem>,
+    initialMedia: FolioMediaItem,
     backProgress: Float,
     sourceRect: Rect? = null,
     onBack: () -> Unit = {},
+    onMediaChanged: (FolioMediaItem) -> Unit = {},
+    isFavorite: (FolioMediaItem) -> Boolean = { false },
+    onToggleFavorite: (FolioMediaItem) -> Unit = {},
+    onSetWallpaper: (FolioMediaItem) -> Unit = {},
+    onOpenWith: (FolioMediaItem) -> Unit = {},
+    onUseAs: (FolioMediaItem) -> Unit = {},
+    isChromeVisible: Boolean = true,
+    onToggleChrome: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val configuration = LocalConfiguration.current
+    val locale = configuration.locales[0] ?: Locale.getDefault()
     val density = LocalDensity.current
     val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
     val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
 
-    val openAnim = remember(item.uri) { Animatable(0f) }
-    var mediaReady by remember(item.uri) { mutableStateOf(false) }
+    val initialIndex = remember(items, initialMedia.uri) {
+        val idx = items.indexOfFirst { it.uri == initialMedia.uri }
+        if (idx >= 0) idx else 0
+    }
+    val pagerState = rememberPagerState(
+        initialPage = initialIndex,
+        pageCount = { items.size }
+    )
 
-    LaunchedEffect(item.uri) {
+    LaunchedEffect(pagerState.currentPage) {
+        if (items.isNotEmpty() && pagerState.currentPage in items.indices) {
+            val current = items[pagerState.currentPage]
+            if (current.uri != initialMedia.uri) {
+                onMediaChanged(current)
+            }
+        }
+    }
+
+    val activeItem = items.getOrElse(pagerState.currentPage) { initialMedia }
+
+    val openAnim = remember(initialMedia.uri) { Animatable(0f) }
+    var mediaReady by remember(initialMedia.uri) { mutableStateOf(false) }
+    var showDetailsSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(initialMedia.uri) {
         openAnim.snapTo(0f)
         openAnim.animateTo(1f, FolioMotion.gentle())
         mediaReady = true
@@ -123,6 +175,17 @@ internal fun FolioViewer(
     val currentTransY = lerp(startTransY, 0f, effectiveProgress)
     val currentCorner = androidx.compose.ui.unit.lerp(16.dp, 0.dp, effectiveProgress)
 
+    val chromeAlpha by animateFloatAsState(
+        targetValue = if (isChromeVisible) 1f else 0f,
+        animationSpec = FolioMotion.gentle(),
+        label = "viewerChromeAlpha"
+    )
+    val chromeOffsetY by animateDpAsState(
+        targetValue = if (isChromeVisible) 0.dp else (-80).dp,
+        animationSpec = FolioMotion.gentle(),
+        label = "viewerChromeOffsetY"
+    )
+
     Surface(modifier = modifier, color = Color.Black.copy(alpha = effectiveProgress)) {
         Box(Modifier.fillMaxSize()) {
             Box(
@@ -138,154 +201,195 @@ internal fun FolioViewer(
                         shape = RoundedCornerShape(currentCorner)
                     }
             ) {
-                when {
-                    item.isVideo -> {
-                        val player = remember(item.uri) { ExoPlayer.Builder(context).build() }
-                        DisposableEffect(player, item.uri) {
-                            val listener = object : Player.Listener {
-                                override fun onRenderedFirstFrame() { mediaReady = true }
-                                override fun onPlayerError(error: PlaybackException) { mediaReady = true }
-                            }
-                            player.addListener(listener)
-                            player.setMediaItem(PlayerMediaItem.fromUri(item.uri))
-                            player.prepare()
-                            player.playWhenReady = true
-                            onDispose {
-                                player.removeListener(listener)
-                                player.release()
-                            }
-                        }
-                        var playing by remember(item.uri) { mutableStateOf(true) }
-                        var position by remember(item.uri) { mutableFloatStateOf(0f) }
-                        var duration by remember(item.uri) { mutableFloatStateOf(0f) }
-                        LaunchedEffect(player) {
-                            while (true) {
-                                position = player.currentPosition.coerceAtLeast(0L).toFloat()
-                                duration = player.duration.takeIf { it > 0L }?.toFloat() ?: 0f
-                                playing = player.isPlaying
-                                delay(300)
-                            }
-                        }
-                        Box(Modifier.fillMaxSize()) {
-                            AndroidView(
-                                modifier = Modifier.fillMaxSize(),
-                                factory = { PlayerView(it).apply {
-                                    this.player = player
-                                    useController = false
-                                } },
-                                update = {
-                                    it.player = player
-                                    it.useController = false
-                                }
-                            )
-                            androidx.compose.foundation.layout.Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(androidx.compose.ui.Alignment.BottomCenter)
-                                    .background(Color.Black.copy(alpha = 0.58f))
-                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    key = { items[it].uri.toString() }
+                ) { page ->
+                    val pageItem = items[page]
+                    val isCurrentPage = pagerState.currentPage == page
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
                             ) {
-                                androidx.compose.material3.Slider(
-                                    value = position.coerceIn(0f, duration.coerceAtLeast(1f)),
-                                    onValueChange = { next ->
-                                        position = next
-                                        player.seekTo(next.toLong())
-                                    },
-                                    valueRange = 0f..duration.coerceAtLeast(1f)
-                                )
-                                androidx.compose.foundation.layout.Row(
-                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                                ) {
-                                    androidx.compose.material3.IconButton(onClick = {
-                                        if (player.isPlaying) player.pause() else player.play()
-                                        playing = player.isPlaying
-                                    }) {
-                                        androidx.compose.material3.Text(
-                                            text = if (playing) "Ⅱ" else "▶",
-                                            color = Color.White,
-                                            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-                                        )
+                                onToggleChrome()
+                            }
+                    ) {
+                        when {
+                            pageItem.isVideo -> {
+                                val player = remember(pageItem.uri) { ExoPlayer.Builder(context).build() }
+                                DisposableEffect(player, pageItem.uri) {
+                                    val listener = object : Player.Listener {
+                                        override fun onRenderedFirstFrame() { mediaReady = true }
+                                        override fun onPlayerError(error: PlaybackException) { mediaReady = true }
                                     }
-                                    androidx.compose.material3.Text(
-                                        text = "${formatPlayerTime(position.toLong())} / ${formatPlayerTime(duration.toLong())}",
-                                        color = Color.White,
-                                        style = androidx.compose.material3.MaterialTheme.typography.labelMedium
+                                    player.addListener(listener)
+                                    player.setMediaItem(PlayerMediaItem.fromUri(pageItem.uri))
+                                    player.prepare()
+                                    player.playWhenReady = isCurrentPage
+                                    onDispose {
+                                        player.removeListener(listener)
+                                        player.release()
+                                    }
+                                }
+
+                                LaunchedEffect(isCurrentPage) {
+                                    if (isCurrentPage) {
+                                        player.play()
+                                    } else {
+                                        player.pause()
+                                    }
+                                }
+
+                                var playing by remember(pageItem.uri) { mutableStateOf(isCurrentPage) }
+                                var position by remember(pageItem.uri) { mutableFloatStateOf(0f) }
+                                var duration by remember(pageItem.uri) { mutableFloatStateOf(0f) }
+                                LaunchedEffect(player) {
+                                    while (true) {
+                                        position = player.currentPosition.coerceAtLeast(0L).toFloat()
+                                        duration = player.duration.takeIf { it > 0L }?.toFloat() ?: 0f
+                                        playing = player.isPlaying
+                                        delay(300)
+                                    }
+                                }
+                                Box(Modifier.fillMaxSize()) {
+                                    AndroidView(
+                                        modifier = Modifier.fillMaxSize(),
+                                        factory = { PlayerView(it).apply {
+                                            this.player = player
+                                            useController = false
+                                            setOnClickListener { onToggleChrome() }
+                                        } },
+                                        update = {
+                                            it.player = player
+                                            it.useController = false
+                                        }
                                     )
+                                    AnimatedVisibility(
+                                        visible = isChromeVisible,
+                                        enter = fadeIn(FolioMotion.contentEnter),
+                                        exit = fadeOut(FolioMotion.contentExit),
+                                        modifier = Modifier.align(Alignment.BottomCenter)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color.Black.copy(alpha = 0.58f))
+                                                .padding(horizontal = 20.dp, vertical = 12.dp)
+                                                .padding(bottom = 76.dp)
+                                        ) {
+                                            Slider(
+                                                value = position.coerceIn(0f, duration.coerceAtLeast(1f)),
+                                                onValueChange = { next ->
+                                                    position = next
+                                                    player.seekTo(next.toLong())
+                                                },
+                                                valueRange = 0f..duration.coerceAtLeast(1f)
+                                            )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                IconButton(onClick = {
+                                                    if (player.isPlaying) player.pause() else player.play()
+                                                    playing = player.isPlaying
+                                                }) {
+                                                    Text(
+                                                        text = if (playing) "Ⅱ" else "▶",
+                                                        color = Color.White,
+                                                        style = MaterialTheme.typography.titleMedium
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "${formatPlayerTime(position.toLong())} / ${formatPlayerTime(duration.toLong())}",
+                                                    color = Color.White,
+                                                    style = MaterialTheme.typography.labelMedium
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }
 
-                    item.supportsRegionZoom() -> {
-                        AndroidView(
-                            modifier = Modifier.fillMaxSize(),
-                            factory = { viewContext ->
-                                FolioZoomableImageFrame(viewContext).apply { bind(item) { mediaReady = true } }
-                            },
-                            update = { view -> view.bind(item) { mediaReady = true } },
-                            onRelease = { view -> view.dispose() }
-                        )
-                    }
-
-                    else -> {
-                        var scale by remember(item.uri) { mutableFloatStateOf(1f) }
-                        var offset by remember(item.uri) { mutableStateOf(Offset.Zero) }
-                        val transformState = rememberTransformableState { zoom, pan, _ ->
-                            scale = (scale * zoom).coerceIn(1f, 5f)
-                            offset = if (scale > 1f) offset + pan else Offset.Zero
-                        }
-                        AndroidView(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .transformable(transformState)
-                                .graphicsLayer {
-                                    scaleX = scale
-                                    scaleY = scale
-                                    translationX = offset.x
-                                    translationY = offset.y
-                                },
-                            factory = {
-                                ImageView(it).apply {
-                                    scaleType = ImageView.ScaleType.FIT_CENTER
-                                    setBackgroundColor(android.graphics.Color.BLACK)
-                                }
-                            },
-                            update = { view ->
-                                Glide.with(view)
-                                    .load(item.uri)
-                                    .signature(ObjectKey("${item.dateAddedMillis}-${item.sizeBytes}"))
-                                    .fitCenter()
-                                    .listener(object : RequestListener<Drawable> {
-                                        override fun onLoadFailed(
-                                            e: GlideException?, model: Any?, target: Target<Drawable>?,
-                                            isFirstResource: Boolean
-                                        ): Boolean {
-                                            mediaReady = true
-                                            return false
+                            pageItem.supportsRegionZoom() -> {
+                                AndroidView(
+                                    modifier = Modifier.fillMaxSize(),
+                                    factory = { viewContext ->
+                                        FolioZoomableImageFrame(viewContext).apply {
+                                            bind(pageItem, onTap = onToggleChrome) { mediaReady = true }
                                         }
-
-                                        override fun onResourceReady(
-                                            resource: Drawable, model: Any, target: Target<Drawable>?,
-                                            dataSource: DataSource, isFirstResource: Boolean
-                                        ): Boolean {
-                                            mediaReady = true
-                                            return false
-                                        }
-                                    })
-                                    .into(view)
+                                    },
+                                    update = { view -> view.bind(pageItem, onTap = onToggleChrome) { mediaReady = true } },
+                                    onRelease = { view -> view.dispose() }
+                                )
                             }
-                        )
+
+                            else -> {
+                                var scale by remember(pageItem.uri) { mutableFloatStateOf(1f) }
+                                var offset by remember(pageItem.uri) { mutableStateOf(Offset.Zero) }
+                                val transformState = rememberTransformableState { zoom, pan, _ ->
+                                    scale = (scale * zoom).coerceIn(1f, 5f)
+                                    offset = if (scale > 1f) offset + pan else Offset.Zero
+                                }
+                                AndroidView(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .transformable(transformState)
+                                        .graphicsLayer {
+                                            scaleX = scale
+                                            scaleY = scale
+                                            translationX = offset.x
+                                            translationY = offset.y
+                                        },
+                                    factory = {
+                                        ImageView(it).apply {
+                                            scaleType = ImageView.ScaleType.FIT_CENTER
+                                            setBackgroundColor(android.graphics.Color.BLACK)
+                                            setOnClickListener { onToggleChrome() }
+                                        }
+                                    },
+                                    update = { view ->
+                                        Glide.with(view)
+                                            .load(pageItem.uri)
+                                            .signature(ObjectKey("${pageItem.dateAddedMillis}-${pageItem.sizeBytes}"))
+                                            .fitCenter()
+                                            .listener(object : RequestListener<Drawable> {
+                                                override fun onLoadFailed(
+                                                    e: GlideException?, model: Any?, target: Target<Drawable>?,
+                                                    isFirstResource: Boolean
+                                                ): Boolean {
+                                                    mediaReady = true
+                                                    return false
+                                                }
+
+                                                override fun onResourceReady(
+                                                    resource: Drawable, model: Any, target: Target<Drawable>?,
+                                                    dataSource: DataSource, isFirstResource: Boolean
+                                                ): Boolean {
+                                                    mediaReady = true
+                                                    return false
+                                                }
+                                            })
+                                            .into(view)
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            // Top Bar with Back navigation & metadata (Google Photos style)
+            // Top Bar with Back navigation, metadata, and overflow actions
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
+                    .offset { IntOffset(0, chromeOffsetY.roundToPx()) }
                     .padding(horizontal = 14.dp, vertical = 8.dp)
-                    .graphicsLayer { alpha = effectiveProgress },
+                    .graphicsLayer { alpha = effectiveProgress * chromeAlpha },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
@@ -306,19 +410,19 @@ internal fun FolioViewer(
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item.displayName,
+                        text = activeItem.displayName,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (item.dateAddedMillis > 0L) {
-                        val dateLabel = remember(item.dateAddedMillis) {
+                    if (activeItem.dateAddedMillis > 0L) {
+                        val dateLabel = remember(activeItem.dateAddedMillis, locale) {
                             runCatching {
                                 DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
-                                    .withLocale(Locale.getDefault())
-                                    .format(Instant.ofEpochMilli(item.dateAddedMillis).atZone(ZoneId.systemDefault()).toLocalDate())
+                                    .withLocale(locale)
+                                    .format(Instant.ofEpochMilli(activeItem.dateAddedMillis).atZone(ZoneId.systemDefault()).toLocalDate())
                             }.getOrNull()
                         }
                         if (dateLabel != null) {
@@ -330,8 +434,70 @@ internal fun FolioViewer(
                         }
                     }
                 }
+
+                Surface(
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.52f),
+                    contentColor = Color.White,
+                    tonalElevation = 2.dp
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val favored = isFavorite(activeItem)
+                        IconButton(onClick = { onToggleFavorite(activeItem) }) {
+                            Icon(
+                                imageVector = if (favored) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                contentDescription = if (favored) "Remove from favorites" else "Add to favorites",
+                                tint = if (favored) MaterialTheme.colorScheme.primary else Color.White
+                            )
+                        }
+                        IconButton(onClick = { showDetailsSheet = true }) {
+                            Icon(Icons.Outlined.Info, contentDescription = "Details")
+                        }
+                        Box {
+                            var menuExpanded by remember { mutableStateOf(false) }
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(Icons.Outlined.MoreVert, contentDescription = "More options")
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false }
+                            ) {
+                                if (!activeItem.isVideo) {
+                                    DropdownMenuItem(
+                                        text = { Text("Set as wallpaper") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onSetWallpaper(activeItem)
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Open with") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onOpenWith(activeItem)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Use as") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onUseAs(activeItem)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    if (showDetailsSheet) {
+        FolioDetailsBottomSheet(
+            item = activeItem,
+            onDismissRequest = { showDetailsSheet = false }
+        )
     }
 }
 
@@ -362,7 +528,10 @@ private class FolioZoomableImageFrame(context: Context) : FrameLayout(context) {
         )
     }
 
-    fun bind(item: FolioMediaItem, onPreviewReady: () -> Unit) {
+    fun bind(item: FolioMediaItem, onTap: () -> Unit, onPreviewReady: () -> Unit) {
+        preview.setOnClickListener { onTap() }
+        zoomView.setOnClickListener { onTap() }
+
         if (boundUri == item.uri) return
         boundUri = item.uri
 
@@ -433,7 +602,7 @@ private class FolioZoomableImageFrame(context: Context) : FrameLayout(context) {
 }
 
 private fun FolioMediaItem.supportsRegionZoom(): Boolean {
-    val name = displayName.lowercase()
+    val name = displayName.lowercase(Locale.ROOT)
     return mimeType.equals("image/jpeg", ignoreCase = true) ||
         mimeType.equals("image/png", ignoreCase = true) ||
         name.endsWith(".jpg") ||
@@ -441,15 +610,14 @@ private fun FolioMediaItem.supportsRegionZoom(): Boolean {
         name.endsWith(".png")
 }
 
-
 private fun formatPlayerTime(milliseconds: Long): String {
     val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
     val hours = totalSeconds / 3600L
     val minutes = (totalSeconds % 3600L) / 60L
     val seconds = totalSeconds % 60L
     return if (hours > 0L) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
+        "%d:%02d:%02d".format(Locale.US, hours, minutes, seconds)
     } else {
-        "%d:%02d".format(minutes, seconds)
+        "%d:%02d".format(Locale.US, minutes, seconds)
     }
 }

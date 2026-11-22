@@ -2,7 +2,9 @@ package org.fossify.gallery.ui
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.WallpaperManager
 import android.content.ClipData
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -102,6 +104,9 @@ fun FolioApp(
     val uiState by viewModel.uiState.collectAsState()
     var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
     var showTrashConfirmation by remember { mutableStateOf(false) }
+    var isViewerChromeVisible by remember { mutableStateOf(true) }
+    var activeViewerMedia by remember(uiState.selectedMedia) { mutableStateOf(uiState.selectedMedia) }
+    var showViewerDetailsSheet by remember { mutableStateOf<org.fossify.gallery.ui.data.FolioMediaItem?>(null) }
 
     // Directional scroll hysteresis (Monomail preference: hides dock when scrolling down, reveals on scroll up)
     var isScrollingDown by remember { mutableStateOf(false) }
@@ -320,11 +325,33 @@ fun FolioApp(
             ) { contentPadding ->
                 if (uiState.selectedMedia != null) {
                     FolioViewer(
-                        item = uiState.selectedMedia!!,
+                        items = uiState.visibleItems,
+                        initialMedia = uiState.selectedMedia!!,
                         backProgress = predictiveBackProgress,
                         sourceRect = uiState.selectedSourceRect,
                         onBack = {
                             viewModel.onEvent(FolioUiEvent.CloseViewer)
+                            isViewerChromeVisible = true
+                        },
+                        onMediaChanged = { activeViewerMedia = it },
+                        isFavorite = { item ->
+                            uiState.favorites.contains(item.uri.toString())
+                        },
+                        onToggleFavorite = { item ->
+                            viewModel.onEvent(FolioUiEvent.ToggleFavorite(item))
+                        },
+                        onSetWallpaper = { item ->
+                            setMediaAsWallpaper(context, item)
+                        },
+                        onOpenWith = { item ->
+                            openMediaWith(context, item)
+                        },
+                        onUseAs = { item ->
+                            useMediaAs(context, item)
+                        },
+                        isChromeVisible = isViewerChromeVisible,
+                        onToggleChrome = {
+                            isViewerChromeVisible = !isViewerChromeVisible
                         },
                         modifier = Modifier
                             .fillMaxSize()
@@ -609,16 +636,17 @@ fun FolioApp(
 
             // Single Persistent Floating Dock (Overlaid at bottom center, edge-to-edge content scrolls underneath)
             if (!pickerMode) {
+                val currentViewerItem = activeViewerMedia ?: uiState.selectedMedia
                 FolioBottomDock(
                     selectedTab = uiState.selectedTab,
                     viewerMode = uiState.selectedMedia != null,
-                    isScrolling = isScrollingDown,
+                    isScrolling = isScrollingDown || (!isViewerChromeVisible && uiState.selectedMedia != null),
                     onTabSelected = {
                         viewModel.onEvent(FolioUiEvent.SelectTab(it))
                         isScrollingDown = false
                     },
                     onShare = {
-                        uiState.selectedMedia?.let { item ->
+                        currentViewerItem?.let { item ->
                             val share = Intent(Intent.ACTION_SEND).apply {
                                 type = item.mimeType
                                 putExtra(Intent.EXTRA_STREAM, item.uri)
@@ -628,7 +656,7 @@ fun FolioApp(
                         }
                     },
                     onEdit = {
-                        uiState.selectedMedia?.let { item ->
+                        currentViewerItem?.let { item ->
                             val editIntent = Intent(Intent.ACTION_EDIT).apply {
                                 setClassName(context, "org.fossify.gallery.ui.editor.FolioEditorActivity")
                                 setDataAndType(item.uri, item.mimeType)
@@ -648,9 +676,22 @@ fun FolioApp(
                         }
                     },
                     onDelete = {
-                        uiState.selectedMedia?.let {
+                        currentViewerItem?.let {
                             viewModel.onEvent(FolioUiEvent.ToggleSelection(it))
                             showTrashConfirmation = true
+                        }
+                    },
+                    isFavorite = currentViewerItem?.let {
+                        uiState.favorites.contains(it.uri.toString())
+                    } ?: false,
+                    onToggleFavorite = {
+                        currentViewerItem?.let {
+                            viewModel.onEvent(FolioUiEvent.ToggleFavorite(it))
+                        }
+                    },
+                    onInfo = {
+                        currentViewerItem?.let {
+                            showViewerDetailsSheet = it
                         }
                     },
                     modifier = Modifier
@@ -699,5 +740,50 @@ fun FolioApp(
                 }
             )
         }
+
+        showViewerDetailsSheet?.let { detailsItem ->
+            org.fossify.gallery.ui.details.FolioDetailsBottomSheet(
+                item = detailsItem,
+                onDismissRequest = { showViewerDetailsSheet = null }
+            )
+        }
+    }
+}
+
+private fun setMediaAsWallpaper(context: Context, item: org.fossify.gallery.ui.data.FolioMediaItem) {
+    val wpIntent = Intent(context, org.fossify.gallery.activities.SetWallpaperActivity::class.java).apply {
+        data = item.uri
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    runCatching {
+        context.startActivity(wpIntent)
+    }.onFailure {
+        runCatching {
+            val cropAndSet = Intent(WallpaperManager.ACTION_CROP_AND_SET_WALLPAPER).apply {
+                setDataAndType(item.uri, item.mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(cropAndSet)
+        }
+    }
+}
+
+private fun openMediaWith(context: Context, item: org.fossify.gallery.ui.data.FolioMediaItem) {
+    val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(item.uri, item.mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(viewIntent, "Open with"))
+    }
+}
+
+private fun useMediaAs(context: Context, item: org.fossify.gallery.ui.data.FolioMediaItem) {
+    val attachIntent = Intent(Intent.ACTION_ATTACH_DATA).apply {
+        setDataAndType(item.uri, item.mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(attachIntent, "Use as"))
     }
 }
