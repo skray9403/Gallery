@@ -57,14 +57,14 @@ import androidx.compose.ui.unit.dp
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.fossify.gallery.ui.data.FolioMediaItem
+import org.fossify.gallery.ui.data.LuminaMediaItem
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 
-internal data class FolioExifDetails(
+internal data class LuminaExifDetails(
     val camera: String? = null,
     val lens: String? = null,
     val aperture: String? = null,
@@ -78,8 +78,8 @@ internal data class FolioExifDetails(
 @SuppressLint("NonObservableLocale")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun FolioDetailsBottomSheet(
-    item: FolioMediaItem,
+internal fun LuminaDetailsBottomSheet(
+    item: LuminaMediaItem,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -89,7 +89,7 @@ internal fun FolioDetailsBottomSheet(
     val clipboardManager = LocalClipboardManager.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val exifDetailsState = produceState<FolioExifDetails?>(initialValue = null, key1 = item.uri) {
+    val exifDetailsState = produceState<LuminaExifDetails?>(initialValue = null, key1 = item.uri) {
         value = withContext(Dispatchers.IO) {
             loadExifDetails(context, item.uri)
         }
@@ -417,7 +417,7 @@ private fun formatDuration(milliseconds: Long): String {
     return "%d:%02d".format(Locale.US, minutes, seconds)
 }
 
-private fun loadExifDetails(context: Context, uri: Uri): FolioExifDetails? = runCatching {
+private fun loadExifDetails(context: Context, uri: Uri): LuminaExifDetails? = runCatching {
     context.contentResolver.openInputStream(uri)?.use { stream ->
         val exif = ExifInterface(stream)
         val make = exif.getAttribute(ExifInterface.TAG_MAKE)?.trim().orEmpty()
@@ -458,7 +458,7 @@ private fun loadExifDetails(context: Context, uri: Uri): FolioExifDetails? = run
             Pair(latLon[0].toDouble(), latLon[1].toDouble())
         } else null
 
-        FolioExifDetails(
+        LuminaExifDetails(
             camera = camera,
             lens = lens,
             aperture = aperture,

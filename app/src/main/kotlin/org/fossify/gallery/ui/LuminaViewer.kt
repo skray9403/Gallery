@@ -90,9 +90,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.fossify.gallery.helpers.MyGlideImageDecoder
 import org.fossify.gallery.helpers.PicassoRegionDecoder
-import org.fossify.gallery.ui.data.FolioMediaItem
-import org.fossify.gallery.ui.details.FolioDetailsBottomSheet
-import org.fossify.gallery.ui.theme.FolioMotion
+import org.fossify.gallery.ui.data.LuminaMediaItem
+import org.fossify.gallery.ui.details.LuminaDetailsBottomSheet
+import org.fossify.gallery.ui.theme.LuminaMotion
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -101,18 +101,18 @@ import java.util.Locale
 
 @SuppressLint("NonObservableLocale")
 @Composable
-internal fun FolioViewer(
-    items: List<FolioMediaItem>,
-    initialMedia: FolioMediaItem,
+internal fun LuminaViewer(
+    items: List<LuminaMediaItem>,
+    initialMedia: LuminaMediaItem,
     backProgress: Float,
     sourceRect: Rect? = null,
     onBack: () -> Unit = {},
-    onMediaChanged: (FolioMediaItem) -> Unit = {},
-    isFavorite: (FolioMediaItem) -> Boolean = { false },
-    onToggleFavorite: (FolioMediaItem) -> Unit = {},
-    onSetWallpaper: (FolioMediaItem) -> Unit = {},
-    onOpenWith: (FolioMediaItem) -> Unit = {},
-    onUseAs: (FolioMediaItem) -> Unit = {},
+    onMediaChanged: (LuminaMediaItem) -> Unit = {},
+    isFavorite: (LuminaMediaItem) -> Boolean = { false },
+    onToggleFavorite: (LuminaMediaItem) -> Unit = {},
+    onSetWallpaper: (LuminaMediaItem) -> Unit = {},
+    onOpenWith: (LuminaMediaItem) -> Unit = {},
+    onUseAs: (LuminaMediaItem) -> Unit = {},
     isChromeVisible: Boolean = true,
     onToggleChrome: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -151,7 +151,7 @@ internal fun FolioViewer(
 
     LaunchedEffect(initialMedia.uri) {
         openAnim.snapTo(0f)
-        openAnim.animateTo(1f, FolioMotion.gentle())
+        openAnim.animateTo(1f, LuminaMotion.gentle())
         mediaReady = true
     }
 
@@ -177,12 +177,12 @@ internal fun FolioViewer(
 
     val chromeAlpha by animateFloatAsState(
         targetValue = if (isChromeVisible) 1f else 0f,
-        animationSpec = FolioMotion.gentle(),
+        animationSpec = LuminaMotion.gentle(),
         label = "viewerChromeAlpha"
     )
     val chromeOffsetY by animateDpAsState(
         targetValue = if (isChromeVisible) 0.dp else (-80).dp,
-        animationSpec = FolioMotion.gentle(),
+        animationSpec = LuminaMotion.gentle(),
         label = "viewerChromeOffsetY"
     )
 
@@ -271,8 +271,8 @@ internal fun FolioViewer(
                                     )
                                     AnimatedVisibility(
                                         visible = isChromeVisible,
-                                        enter = fadeIn(FolioMotion.contentEnter),
-                                        exit = fadeOut(FolioMotion.contentExit),
+                                        enter = fadeIn(LuminaMotion.contentEnter),
+                                        exit = fadeOut(LuminaMotion.contentExit),
                                         modifier = Modifier.align(Alignment.BottomCenter)
                                     ) {
                                         Column(
@@ -318,7 +318,7 @@ internal fun FolioViewer(
                                 AndroidView(
                                     modifier = Modifier.fillMaxSize(),
                                     factory = { viewContext ->
-                                        FolioZoomableImageFrame(viewContext).apply {
+                                        LuminaZoomableImageFrame(viewContext).apply {
                                             bind(pageItem, onTap = onToggleChrome) { mediaReady = true }
                                         }
                                     },
@@ -400,7 +400,7 @@ internal fun FolioViewer(
                 ) {
                     IconButton(onClick = {
                         scope.launch {
-                            openAnim.animateTo(0f, FolioMotion.gentle())
+                            openAnim.animateTo(0f, LuminaMotion.gentle())
                             onBack()
                         }
                     }) {
@@ -494,7 +494,7 @@ internal fun FolioViewer(
     }
 
     if (showDetailsSheet) {
-        FolioDetailsBottomSheet(
+        LuminaDetailsBottomSheet(
             item = activeItem,
             onDismissRequest = { showDetailsSheet = false }
         )
@@ -507,7 +507,7 @@ internal fun FolioViewer(
  * high-resolution tiles are ready; unsupported formats stay on the Compose
  * viewer's animated/decoder-aware fallback path.
  */
-private class FolioZoomableImageFrame(context: Context) : FrameLayout(context) {
+private class LuminaZoomableImageFrame(context: Context) : FrameLayout(context) {
     private val preview = ImageView(context)
     private val zoomView = SubsamplingScaleImageView(context)
     private var boundUri: Uri? = null
@@ -528,7 +528,7 @@ private class FolioZoomableImageFrame(context: Context) : FrameLayout(context) {
         )
     }
 
-    fun bind(item: FolioMediaItem, onTap: () -> Unit, onPreviewReady: () -> Unit) {
+    fun bind(item: LuminaMediaItem, onTap: () -> Unit, onPreviewReady: () -> Unit) {
         preview.setOnClickListener { onTap() }
         zoomView.setOnClickListener { onTap() }
 
@@ -601,7 +601,7 @@ private class FolioZoomableImageFrame(context: Context) : FrameLayout(context) {
     }
 }
 
-private fun FolioMediaItem.supportsRegionZoom(): Boolean {
+private fun LuminaMediaItem.supportsRegionZoom(): Boolean {
     val name = displayName.lowercase(Locale.ROOT)
     return mimeType.equals("image/jpeg", ignoreCase = true) ||
         mimeType.equals("image/png", ignoreCase = true) ||

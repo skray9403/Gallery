@@ -1,4 +1,4 @@
-# Folio direct Compose rewrite
+# Lumina direct Compose rewrite
 
 ## Decisions
 
@@ -7,8 +7,8 @@
 - Strategy: direct migration; `main` remains the untouched Fossify Gallery baseline.
 - Android application ID: `com.skray.gallery` (debug suffix: `.debug`).
 - Kotlin/resource namespace: `org.fossify.gallery` during the transition. This is intentionally decoupled from the install ID so the existing source tree and generated resource references do not break in the foundation commit.
-- Product name: **Folio**.
-- Data policy: fresh app-private state. No legacy database, preferences or private files are imported. Media in shared storage is not changed; Folio will request access and rebuild its index when the media layer is migrated.
+- Product name: **Lumina**.
+- Data policy: fresh app-private state. No legacy database, preferences or private files are imported. Media in shared storage is not changed; Lumina will request access and rebuild its index when the media layer is migrated.
 - Build deliverables: FOSS and Google Play debug APKs from GitHub Actions. Release signing is a later stage and requires configured signing material.
 
 ## Design and motion reference
@@ -20,11 +20,11 @@ The design reference is the user's `skray9403/monomail` repository, specifically
 - `app/.../ui/navigation/ExpressivePersistentDock.kt` and `feature/inbox/.../BottomDockBar.kt`: one persistent floating navigation surface and animated selection.
 - The 19 November 2026 Monomail performance commit: directional scroll thresholds, primitive accumulators, less per-frame state work, and removal of blanket `animateItem()` usage where it added scrolling overhead.
 
-Folio takes these as design and motion principles, not as a copied mail UI. Its first shell uses stock Material 3 navigation components, dynamic color where available, rounded expressive surfaces, and locally owned motion tokens.
+Lumina takes these as design and motion principles, not as a copied mail UI. Its first shell uses stock Material 3 navigation components, dynamic color where available, rounded expressive surfaces, and locally owned motion tokens.
 
 ## Migration stages
 
-1. **Foundation:** new Folio identity, Compose compiler/dependencies, expressive theme and motion tokens, Compose activity/launcher path, initial Photos/Albums shell, and GitHub Actions verification of both flavors.
+1. **Foundation:** new Lumina identity, Compose compiler/dependencies, expressive theme and motion tokens, Compose activity/launcher path, initial Photos/Albums shell, and GitHub Actions verification of both flavors.
 2. **Media domain:** permission-aware MediaStore querying, mixed photo/video models, album grouping, and a Picasso thumbnail bridge are now implemented. SAF paging, background indexing, and format-specific thumbnail validation remain.
 3. **Library UI:** photo grid, date grouping, albums, sorting, filtering, search, multi-select and favorites.
 4. **Viewer:** full-screen image viewer, zoom/pan, GIF/APNG/WebP, HDR-aware rendering, video via Media3, and sharing.

@@ -44,15 +44,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class FolioEditorActivity : ComponentActivity() {
+class LuminaEditorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val uri = intent.data ?: intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
         if (uri == null) { finish(); return }
         setContent {
-            org.fossify.gallery.ui.theme.FolioTheme {
-                FolioEditor(uri, onBack = { finish() }, onSaved = { result ->
+            org.fossify.gallery.ui.theme.LuminaTheme {
+                LuminaEditor(uri, onBack = { finish() }, onSaved = { result ->
                     setResult(Activity.RESULT_OK, Intent().setData(result).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                     finish()
                 })
@@ -65,7 +65,7 @@ private enum class Tool(val title: String) { LIGHT("Light"), CONTRAST("Contrast"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FolioEditor(source: Uri, onBack: () -> Unit, onSaved: (Uri) -> Unit) {
+private fun LuminaEditor(source: Uri, onBack: () -> Unit, onSaved: (Uri) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var bitmap by remember(source) { mutableStateOf<Bitmap?>(null) }
@@ -184,9 +184,9 @@ private fun saveImage(
     val out=Bitmap.createBitmap(clipped.width,clipped.height,Bitmap.Config.ARGB_8888)
     Canvas(out).drawBitmap(clipped,0f,0f,Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter=ColorMatrixColorFilter(cm) })
     val values=ContentValues().apply {
-        put(MediaStore.Images.Media.DISPLAY_NAME,"Folio_${System.currentTimeMillis()}.jpg")
+        put(MediaStore.Images.Media.DISPLAY_NAME,"Lumina_${System.currentTimeMillis()}.jpg")
         put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg")
-        if(Build.VERSION.SDK_INT>=29) put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/Folio")
+        if(Build.VERSION.SDK_INT>=29) put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/Lumina")
     }
     val target=context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values) ?: error("Insert failed")
     context.contentResolver.openOutputStream(target)?.use { out.compress(Bitmap.CompressFormat.JPEG,95,it) } ?: error("Write failed")

@@ -17,7 +17,7 @@ import org.fossify.gallery.helpers.MediaFetcher
 import java.io.File
 import java.util.Locale
 
-data class FolioMediaItem(
+data class LuminaMediaItem(
     val id: Long,
     val uri: Uri,
     val displayName: String,
@@ -34,14 +34,14 @@ data class FolioMediaItem(
     val isTrashed: Boolean
 )
 
-data class FolioAlbum(
+data class LuminaAlbum(
     val id: String,
     val name: String,
     val count: Int,
-    val cover: FolioMediaItem
+    val cover: LuminaMediaItem
 )
 
-object FolioMediaRepository {
+object LuminaMediaRepository {
     fun hasMediaAccess(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= 33) {
             val images = granted(context, Manifest.permission.READ_MEDIA_IMAGES)
@@ -69,7 +69,7 @@ object FolioMediaRepository {
     fun loadMedia(
         context: Context,
         excludedRelativePaths: Set<String> = emptySet()
-    ): List<FolioMediaItem> {
+    ): List<LuminaMediaItem> {
         val indexed = loadCollections(context, trashed = false)
         val supplemental = if (Build.VERSION.SDK_INT >= 30) loadLegacySpecialFormats(context) else emptyList()
         val merged = (indexed + supplemental).distinctBy {
@@ -92,7 +92,7 @@ object FolioMediaRepository {
      *
      * Only MediaStore content URIs are returned, retaining scoped-storage grants.
      */
-    private fun loadLegacySpecialFormats(context: Context): List<FolioMediaItem> {
+    private fun loadLegacySpecialFormats(context: Context): List<LuminaMediaItem> {
         val byFolder = runCatching {
             MediaFetcher(context).getAndroid11FolderMedia(
                 isPickImage = false,
@@ -118,7 +118,7 @@ object FolioMediaRepository {
             } else {
                 parent.trim('/')
             }
-            FolioMediaItem(
+            LuminaMediaItem(
                 id = medium.mediaStoreId,
                 uri = ContentUris.withAppendedId(filesUri, medium.mediaStoreId),
                 displayName = medium.name,
@@ -137,7 +137,7 @@ object FolioMediaRepository {
         }
     }
 
-    fun loadTrash(context: Context): List<FolioMediaItem> =
+    fun loadTrash(context: Context): List<LuminaMediaItem> =
         if (Build.VERSION.SDK_INT >= 30) loadCollections(context, trashed = true) else emptyList()
 
     fun restore(context: Context, uri: Uri): Boolean {
@@ -155,7 +155,7 @@ object FolioMediaRepository {
     }
 
 
-    fun loadSingle(context: Context, uri: Uri): FolioMediaItem? {
+    fun loadSingle(context: Context, uri: Uri): LuminaMediaItem? {
         val resolver = context.contentResolver
         val mimeType = runCatching { resolver.getType(uri) }
             .getOrNull()
@@ -188,7 +188,7 @@ object FolioMediaRepository {
                     ?: uri.lastPathSegment?.toLongOrNull()
                     ?: -1L
 
-                FolioMediaItem(
+                LuminaMediaItem(
                     id = id,
                     uri = uri,
                     displayName = stringColumn(android.provider.OpenableColumns.DISPLAY_NAME)
@@ -218,12 +218,12 @@ object FolioMediaRepository {
         }
     }
 
-    fun buildAlbums(items: List<FolioMediaItem>): List<FolioAlbum> =
+    fun buildAlbums(items: List<LuminaMediaItem>): List<LuminaAlbum> =
         items.groupBy { it.bucketId ?: it.bucketName.ifBlank { "unknown" } }
             .mapNotNull { (id, contents) ->
-                val cover = contents.maxByOrNull(FolioMediaItem::dateAddedMillis)
+                val cover = contents.maxByOrNull(LuminaMediaItem::dateAddedMillis)
                     ?: return@mapNotNull null
-                FolioAlbum(
+                LuminaAlbum(
                     id = id,
                     name = cover.bucketName.ifBlank { "Other" },
                     count = contents.size,
@@ -235,7 +235,7 @@ object FolioMediaRepository {
     private fun granted(context: Context, permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
-    private fun loadCollections(context: Context, trashed: Boolean): List<FolioMediaItem> {
+    private fun loadCollections(context: Context, trashed: Boolean): List<LuminaMediaItem> {
         val resolver = context.contentResolver
         val images = queryCollection(
             resolver,
@@ -249,7 +249,7 @@ object FolioMediaRepository {
             video = true,
             trashed = trashed
         )
-        return (images + videos).sortedByDescending(FolioMediaItem::dateAddedMillis)
+        return (images + videos).sortedByDescending(LuminaMediaItem::dateAddedMillis)
     }
 
     private fun queryCollection(
@@ -257,7 +257,7 @@ object FolioMediaRepository {
         collection: Uri,
         video: Boolean,
         trashed: Boolean
-    ): List<FolioMediaItem> {
+    ): List<LuminaMediaItem> {
         val projection = buildList {
             add(MediaStore.MediaColumns._ID)
             add(MediaStore.MediaColumns.DISPLAY_NAME)
@@ -288,7 +288,7 @@ object FolioMediaRepository {
                 selectionArgs,
                 "${MediaStore.MediaColumns.DATE_ADDED} DESC"
             )?.use { cursor ->
-                cursor.readFolioItems(collection, video, trashed)
+                cursor.readLuminaItems(collection, video, trashed)
             }.orEmpty()
         } catch (_: SecurityException) {
             emptyList()
@@ -297,11 +297,11 @@ object FolioMediaRepository {
         }
     }
 
-    private fun Cursor.readFolioItems(
+    private fun Cursor.readLuminaItems(
         collection: Uri,
         video: Boolean,
         trashed: Boolean
-    ): List<FolioMediaItem> {
+    ): List<LuminaMediaItem> {
         val idColumn = getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
         val nameColumn = getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
         val mimeColumn = getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
@@ -329,7 +329,7 @@ object FolioMediaRepository {
                     0L
                 }
                 add(
-                    FolioMediaItem(
+                    LuminaMediaItem(
                         id = id,
                         uri = ContentUris.withAppendedId(collection, id),
                         displayName = if (nameColumn >= 0) getString(nameColumn).orEmpty() else "",

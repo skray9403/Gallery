@@ -13,13 +13,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * Compose entry point for Folio and Android's image/video picker intents.
+ * Compose entry point for Lumina and Android's image/video picker intents.
  *
  * The old media activities remain as compatibility services while their
  * behavior is migrated; normal launch and picker flows now enter Compose.
  */
-class FolioActivity : ComponentActivity() {
-    private var launchRequest by mutableStateOf(FolioLaunchRequest())
+class LuminaActivity : ComponentActivity() {
+    private var launchRequest by mutableStateOf(LuminaLaunchRequest())
     private var launchRevision = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,7 +29,7 @@ class FolioActivity : ComponentActivity() {
 
         setContent {
             val request = launchRequest
-            FolioApp(
+            LuminaApp(
                 pickerMode = request.pickerMode,
                 pickerMimeType = request.mimeType,
                 allowMultiple = request.allowMultiple,
@@ -42,7 +42,7 @@ class FolioActivity : ComponentActivity() {
                             data = uris.first()
                             val clip = ClipData.newUri(
                                 contentResolver,
-                                "Folio selected media",
+                                "Lumina selected media",
                                 uris.first()
                             )
                             uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
@@ -73,27 +73,27 @@ class FolioActivity : ComponentActivity() {
         launchRevision += 1
         val action = intent?.action
         val pickerMode = action == Intent.ACTION_PICK || action == Intent.ACTION_GET_CONTENT
-        launchRequest = FolioLaunchRequest(
+        launchRequest = LuminaLaunchRequest(
             pickerMode = pickerMode,
             mimeType = if (pickerMode) intent?.type else null,
             allowMultiple = pickerMode &&
                 intent?.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false) == true,
             initialUri = intent?.data.takeIf { action == Intent.ACTION_VIEW },
             initialTab = if (action == "android.intent.action.APPLICATION_PREFERENCES") {
-                FolioTab.SETTINGS.name
+                LuminaTab.SETTINGS.name
             } else {
-                FolioTab.PHOTOS.name
+                LuminaTab.PHOTOS.name
             },
             revision = launchRevision
         )
     }
 }
 
-private data class FolioLaunchRequest(
+private data class LuminaLaunchRequest(
     val pickerMode: Boolean = false,
     val mimeType: String? = null,
     val allowMultiple: Boolean = false,
     val initialUri: Uri? = null,
-    val initialTab: String = FolioTab.PHOTOS.name,
+    val initialTab: String = LuminaTab.PHOTOS.name,
     val revision: Int = 0
 )

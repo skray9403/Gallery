@@ -16,7 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
-private val FolioLightColors = lightColorScheme(
+private val LuminaLightColors = lightColorScheme(
     primary = Color(0xFF405A78),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFD7E4F8),
@@ -34,7 +34,7 @@ private val FolioLightColors = lightColorScheme(
     surfaceContainerHighest = Color(0xFFE4E4EB)
 )
 
-private val FolioDarkColors = darkColorScheme(
+private val LuminaDarkColors = darkColorScheme(
     primary = Color(0xFFB7C9E6),
     onPrimary = Color(0xFF1E314B),
     primaryContainer = Color(0xFF344A66),
@@ -52,7 +52,7 @@ private val FolioDarkColors = darkColorScheme(
     surfaceContainerHighest = Color(0xFF33353A)
 )
 
-private val FolioShapes = Shapes(
+private val LuminaShapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
     small = RoundedCornerShape(8.dp),
     medium = RoundedCornerShape(16.dp),
@@ -62,7 +62,7 @@ private val FolioShapes = Shapes(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun FolioTheme(
+fun LuminaTheme(
     themeMode: String = "SYSTEM",
     content: @Composable () -> Unit
 ) {
@@ -76,12 +76,12 @@ fun FolioTheme(
     val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else {
-        if (darkTheme) FolioDarkColors else FolioLightColors
+        if (darkTheme) LuminaDarkColors else LuminaLightColors
     }
 
     MaterialExpressiveTheme(
         colorScheme = colorScheme,
-        shapes = FolioShapes,
+        shapes = LuminaShapes,
         motionScheme = MotionScheme.expressive(),
         content = content
     )

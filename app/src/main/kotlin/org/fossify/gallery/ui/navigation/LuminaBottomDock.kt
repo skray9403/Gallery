@@ -56,8 +56,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import org.fossify.gallery.ui.FolioTab
-import org.fossify.gallery.ui.theme.FolioMotion
+import org.fossify.gallery.ui.LuminaTab
+import org.fossify.gallery.ui.theme.LuminaMotion
 
 /**
  * Single, persistent, Material 3 Expressive floating bottom dock.
@@ -69,10 +69,10 @@ import org.fossify.gallery.ui.theme.FolioMotion
  * - Cross-screen morphing into viewer action controls within the exact same footprint.
  */
 @Composable
-internal fun FolioBottomDock(
-    selectedTab: FolioTab,
+internal fun LuminaBottomDock(
+    selectedTab: LuminaTab,
     viewerMode: Boolean,
-    onTabSelected: (FolioTab) -> Unit,
+    onTabSelected: (LuminaTab) -> Unit,
     onShare: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit = {},
@@ -85,8 +85,8 @@ internal fun FolioBottomDock(
     // Vertical hide/reveal offset on scroll fling or immersive mode
     val animatedOffsetY by animateDpAsState(
         targetValue = if (isScrolling) 110.dp else 0.dp,
-        animationSpec = FolioMotion.gentle(),
-        label = "folioDockOffsetY"
+        animationSpec = LuminaMotion.gentle(),
+        label = "luminaDockOffsetY"
     )
 
     Row(
@@ -104,15 +104,15 @@ internal fun FolioBottomDock(
             tonalElevation = 2.dp,
             shadowElevation = 8.dp,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
-            modifier = Modifier.animateContentSize(animationSpec = FolioMotion.gentle())
+            modifier = Modifier.animateContentSize(animationSpec = LuminaMotion.gentle())
         ) {
             AnimatedContent(
                 targetState = viewerMode,
                 transitionSpec = {
-                    (fadeIn(FolioMotion.contentEnter) + scaleIn(initialScale = 0.94f)) togetherWith
-                        (fadeOut(FolioMotion.contentExit) + scaleOut(targetScale = 0.94f))
+                    (fadeIn(LuminaMotion.contentEnter) + scaleIn(initialScale = 0.94f)) togetherWith
+                        (fadeOut(LuminaMotion.contentExit) + scaleOut(targetScale = 0.94f))
                 },
-                label = "folioDockMode"
+                label = "luminaDockMode"
             ) { inViewer ->
                 if (inViewer) {
                     Row(
@@ -157,24 +157,24 @@ internal fun FolioBottomDock(
                         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        FolioTab.entries.forEach { tab ->
+                        LuminaTab.entries.forEach { tab ->
                             val selected = selectedTab == tab
                             val itemBgColor by animateColorAsState(
                                 targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                animationSpec = FolioMotion.snappy(),
+                                animationSpec = LuminaMotion.snappy(),
                                 label = "tabBg_${tab.name}"
                             )
                             val itemContentColor by animateColorAsState(
                                 targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                animationSpec = FolioMotion.snappy(),
+                                animationSpec = LuminaMotion.snappy(),
                                 label = "tabContent_${tab.name}"
                             )
                             val icon = when (tab) {
-                                FolioTab.PHOTOS -> Icons.Outlined.PhotoLibrary
-                                FolioTab.ALBUMS -> Icons.Outlined.FolderOpen
-                                FolioTab.FAVORITES -> Icons.Outlined.Star
-                                FolioTab.TRASH -> Icons.Outlined.Delete
-                                FolioTab.SETTINGS -> Icons.Outlined.Settings
+                                LuminaTab.PHOTOS -> Icons.Outlined.PhotoLibrary
+                                LuminaTab.ALBUMS -> Icons.Outlined.FolderOpen
+                                LuminaTab.FAVORITES -> Icons.Outlined.Star
+                                LuminaTab.TRASH -> Icons.Outlined.Delete
+                                LuminaTab.SETTINGS -> Icons.Outlined.Settings
                             }
 
                             Box(
@@ -202,8 +202,8 @@ internal fun FolioBottomDock(
                                     )
                                     AnimatedVisibility(
                                         visible = selected,
-                                        enter = expandHorizontally(FolioMotion.gentle()) + fadeIn(FolioMotion.contentEnter),
-                                        exit = shrinkHorizontally(FolioMotion.gentle()) + fadeOut(FolioMotion.contentExit)
+                                        enter = expandHorizontally(LuminaMotion.gentle()) + fadeIn(LuminaMotion.contentEnter),
+                                        exit = shrinkHorizontally(LuminaMotion.gentle()) + fadeOut(LuminaMotion.contentExit)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Spacer(Modifier.width(6.dp))
@@ -237,12 +237,12 @@ private fun ActionIconButton(
 ) {
     val bgColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-        animationSpec = FolioMotion.snappy(),
+        animationSpec = LuminaMotion.snappy(),
         label = "actionIconBg"
     )
     val contentColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-        animationSpec = FolioMotion.snappy(),
+        animationSpec = LuminaMotion.snappy(),
         label = "actionIconContent"
     )
 

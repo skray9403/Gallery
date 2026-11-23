@@ -66,12 +66,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.signature.ObjectKey
-import org.fossify.gallery.ui.FolioDateGroup
-import org.fossify.gallery.ui.FolioTab
-import org.fossify.gallery.ui.data.FolioAlbum
-import org.fossify.gallery.ui.data.FolioMediaItem
-import org.fossify.gallery.ui.data.FolioMediaRepository
-import org.fossify.gallery.ui.theme.FolioMotion
+import org.fossify.gallery.ui.LuminaDateGroup
+import org.fossify.gallery.ui.LuminaTab
+import org.fossify.gallery.ui.data.LuminaAlbum
+import org.fossify.gallery.ui.data.LuminaMediaItem
+import org.fossify.gallery.ui.data.LuminaMediaRepository
+import org.fossify.gallery.ui.theme.LuminaMotion
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -80,12 +80,12 @@ import java.time.format.FormatStyle
 import java.util.Locale
 
 @Composable
-internal fun FolioHomeScreen(
-    tab: FolioTab,
-    items: List<FolioMediaItem>,
-    favoriteItems: List<FolioMediaItem>,
-    trashItems: List<FolioMediaItem>,
-    dateGroups: List<FolioDateGroup> = emptyList(),
+internal fun LuminaHomeScreen(
+    tab: LuminaTab,
+    items: List<LuminaMediaItem>,
+    favoriteItems: List<LuminaMediaItem>,
+    trashItems: List<LuminaMediaItem>,
+    dateGroups: List<LuminaDateGroup> = emptyList(),
     hasAccess: Boolean,
     isLoading: Boolean,
     searchText: String,
@@ -96,11 +96,11 @@ internal fun FolioHomeScreen(
     onRemoveExcludedPath: (String) -> Unit,
     onRequestAccess: () -> Unit,
     selectedUris: Set<String>,
-    onMediaClick: (FolioMediaItem, Rect?) -> Unit,
-    onMediaLongClick: (FolioMediaItem) -> Unit,
-    onToggleSelection: (FolioMediaItem) -> Unit,
-    onRestore: (FolioMediaItem) -> Unit,
-    onToggleFavorite: (FolioMediaItem) -> Unit,
+    onMediaClick: (LuminaMediaItem, Rect?) -> Unit,
+    onMediaLongClick: (LuminaMediaItem) -> Unit,
+    onToggleSelection: (LuminaMediaItem) -> Unit,
+    onRestore: (LuminaMediaItem) -> Unit,
+    onToggleFavorite: (LuminaMediaItem) -> Unit,
     onShowVideosChanged: (Boolean) -> Unit,
     onThemeModeChanged: (String) -> Unit,
     onSortModeChanged: (String) -> Unit,
@@ -111,8 +111,8 @@ internal fun FolioHomeScreen(
     onRefresh: () -> Unit
 ) {
     var selectedAlbumId by remember(tab) { mutableStateOf<String?>(null) }
-    if (tab == FolioTab.SETTINGS) {
-        FolioSettings(
+    if (tab == LuminaTab.SETTINGS) {
+        LuminaSettings(
             showVideos = showVideos,
             themeMode = themeMode,
             sortMode = sortMode,
@@ -134,8 +134,8 @@ internal fun FolioHomeScreen(
     }
 
     val searchResults = when (tab) {
-        FolioTab.FAVORITES -> favoriteItems
-        FolioTab.TRASH -> trashItems
+        LuminaTab.FAVORITES -> favoriteItems
+        LuminaTab.TRASH -> trashItems
         else -> items
     }.filter { item ->
         searchText.isBlank() ||
@@ -145,36 +145,36 @@ internal fun FolioHomeScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         when (tab) {
-            FolioTab.PHOTOS, FolioTab.FAVORITES, FolioTab.TRASH -> {
+            LuminaTab.PHOTOS, LuminaTab.FAVORITES, LuminaTab.TRASH -> {
                 if (searchResults.isEmpty()) {
                     when (tab) {
-                        FolioTab.FAVORITES -> EmptyFavorites()
-                        FolioTab.TRASH -> EmptyTrash()
+                        LuminaTab.FAVORITES -> EmptyFavorites()
+                        LuminaTab.TRASH -> EmptyTrash()
                         else -> EmptyLibrary(isLoading, onRefresh)
                     }
                 } else {
-                    FolioMediaGrid(
+                    LuminaMediaGrid(
                         items = searchResults,
-                        dateGroups = if (tab == FolioTab.PHOTOS && searchText.isBlank()) dateGroups else emptyList(),
+                        dateGroups = if (tab == LuminaTab.PHOTOS && searchText.isBlank()) dateGroups else emptyList(),
                         onMediaClick = onMediaClick,
                         onToggleFavorite = onToggleFavorite,
                         onRestore = onRestore,
                         selectedUris = selectedUris,
                         onMediaLongClick = onMediaLongClick,
                         onToggleSelection = onToggleSelection,
-                        showFavoriteActions = tab == FolioTab.FAVORITES,
-                        showRestoreActions = tab == FolioTab.TRASH
+                        showFavoriteActions = tab == LuminaTab.FAVORITES,
+                        showRestoreActions = tab == LuminaTab.TRASH
                     )
                 }
             }
-            FolioTab.ALBUMS -> {
-                val albums = remember(items) { FolioMediaRepository.buildAlbums(items) }
+            LuminaTab.ALBUMS -> {
+                val albums = remember(items) { LuminaMediaRepository.buildAlbums(items) }
                 val filteredAlbums = albums.filter { album ->
                     searchText.isBlank() || album.name.contains(searchText, ignoreCase = true)
                 }
                 val chosenAlbum = filteredAlbums.firstOrNull { it.id == selectedAlbumId }
                 if (chosenAlbum == null) {
-                    FolioAlbumsGrid(filteredAlbums) { selectedAlbumId = it.id }
+                    LuminaAlbumsGrid(filteredAlbums) { selectedAlbumId = it.id }
                 } else {
                     Column(Modifier.fillMaxSize()) {
                         Surface(
@@ -210,7 +210,7 @@ internal fun FolioHomeScreen(
                             }
                         }
                         val albumItems = items.filter { (it.bucketId ?: it.bucketName) == chosenAlbum.id }
-                        FolioMediaGrid(
+                        LuminaMediaGrid(
                             items = albumItems,
                             onMediaClick = onMediaClick,
                             onToggleFavorite = onToggleFavorite,
@@ -224,7 +224,7 @@ internal fun FolioHomeScreen(
                     }
                 }
             }
-            FolioTab.SETTINGS -> Unit
+            LuminaTab.SETTINGS -> Unit
         }
     }
 }
@@ -255,7 +255,7 @@ private fun PermissionState(onRequestAccess: () -> Unit) {
         }
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "Let Folio see your media",
+            text = "Let Lumina see your media",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
         )
@@ -308,7 +308,7 @@ private fun EmptyLibrary(isLoading: Boolean, onRefresh: () -> Unit) {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Photos and videos available to Folio will appear here.",
+            text = "Photos and videos available to Lumina will appear here.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -406,15 +406,15 @@ private class BoundsHolder {
 
 @SuppressLint("NonObservableLocale")
 @Composable
-private fun FolioMediaGrid(
-    items: List<FolioMediaItem>,
-    dateGroups: List<FolioDateGroup> = emptyList(),
-    onMediaClick: (FolioMediaItem, Rect?) -> Unit,
-    onToggleFavorite: (FolioMediaItem) -> Unit,
-    onRestore: (FolioMediaItem) -> Unit,
+private fun LuminaMediaGrid(
+    items: List<LuminaMediaItem>,
+    dateGroups: List<LuminaDateGroup> = emptyList(),
+    onMediaClick: (LuminaMediaItem, Rect?) -> Unit,
+    onToggleFavorite: (LuminaMediaItem) -> Unit,
+    onRestore: (LuminaMediaItem) -> Unit,
     selectedUris: Set<String>,
-    onMediaLongClick: (FolioMediaItem) -> Unit,
-    onToggleSelection: (FolioMediaItem) -> Unit,
+    onMediaLongClick: (LuminaMediaItem) -> Unit,
+    onToggleSelection: (LuminaMediaItem) -> Unit,
     showFavoriteActions: Boolean,
     showRestoreActions: Boolean
 ) {
@@ -439,7 +439,7 @@ private fun FolioMediaGrid(
                     today.minusDays(1) -> "Yesterday"
                     else -> date.format(dateFormatter)
                 }
-                FolioDateGroup(date, sectionLabel, dayItems)
+                LuminaDateGroup(date, sectionLabel, dayItems)
             }
         }
     }
@@ -472,7 +472,7 @@ private fun FolioMediaGrid(
                 key = { it.uri.toString() },
                 contentType = { if (it.isVideo) "video" else "photo" }
             ) { item ->
-                FolioMediaCell(
+                LuminaMediaCell(
                     item = item,
                     isSelected = item.uri.toString() in selectedUris,
                     hasSelection = selectedUris.isNotEmpty(),
@@ -490,17 +490,17 @@ private fun FolioMediaGrid(
 }
 
 @Composable
-private fun FolioMediaCell(
-    item: FolioMediaItem,
+private fun LuminaMediaCell(
+    item: LuminaMediaItem,
     isSelected: Boolean,
     hasSelection: Boolean,
     showFavoriteActions: Boolean,
     showRestoreActions: Boolean,
-    onMediaClick: (FolioMediaItem, Rect?) -> Unit,
-    onMediaLongClick: (FolioMediaItem) -> Unit,
-    onToggleSelection: (FolioMediaItem) -> Unit,
-    onToggleFavorite: (FolioMediaItem) -> Unit,
-    onRestore: (FolioMediaItem) -> Unit
+    onMediaClick: (LuminaMediaItem, Rect?) -> Unit,
+    onMediaLongClick: (LuminaMediaItem) -> Unit,
+    onToggleSelection: (LuminaMediaItem) -> Unit,
+    onToggleFavorite: (LuminaMediaItem) -> Unit,
+    onRestore: (LuminaMediaItem) -> Unit
 ) {
     val boundsHolder = remember { BoundsHolder() }
     val shape = if (isSelected) RoundedCornerShape(14.dp) else RoundedCornerShape(4.dp)
@@ -522,7 +522,7 @@ private fun FolioMediaCell(
         color = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Box(Modifier.fillMaxSize()) {
-            FolioThumbnail(item, Modifier.fillMaxSize())
+            LuminaThumbnail(item, Modifier.fillMaxSize())
             if (isSelected) {
                 Surface(
                     modifier = Modifier
@@ -598,9 +598,9 @@ private fun FolioMediaCell(
 }
 
 @Composable
-private fun FolioAlbumsGrid(
-    albums: List<FolioAlbum>,
-    onAlbumSelected: (FolioAlbum) -> Unit
+private fun LuminaAlbumsGrid(
+    albums: List<LuminaAlbum>,
+    onAlbumSelected: (LuminaAlbum) -> Unit
 ) {
     if (albums.isEmpty()) {
         EmptyLibrary(isLoading = false, onRefresh = {})
@@ -613,7 +613,7 @@ private fun FolioAlbumsGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        items(albums, key = FolioAlbum::id, contentType = { "album" }) { album ->
+        items(albums, key = LuminaAlbum::id, contentType = { "album" }) { album ->
             Surface(
                 onClick = { onAlbumSelected(album) },
                 shape = RoundedCornerShape(20.dp),
@@ -623,7 +623,7 @@ private fun FolioAlbumsGrid(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
             ) {
                 Column {
-                    FolioThumbnail(
+                    LuminaThumbnail(
                         item = album.cover,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -657,7 +657,7 @@ private fun FolioAlbumsGrid(
 }
 
 @Composable
-private fun FolioThumbnail(item: FolioMediaItem, modifier: Modifier = Modifier) {
+private fun LuminaThumbnail(item: LuminaMediaItem, modifier: Modifier = Modifier) {
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -690,7 +690,7 @@ private fun FolioThumbnail(item: FolioMediaItem, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun FolioSettings(
+private fun LuminaSettings(
     showVideos: Boolean,
     onShowVideosChanged: (Boolean) -> Unit,
     themeMode: String,
@@ -848,7 +848,7 @@ private fun FolioSettings(
                 Spacer(Modifier.height(4.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "Exclude a folder only from Folio:",
+                        text = "Exclude a folder only from Lumina:",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )
@@ -862,7 +862,7 @@ private fun FolioSettings(
                         modifier = Modifier.fillMaxWidth(),
                         shape = CircleShape
                     ) {
-                        Text("Exclude a folder from Folio")
+                        Text("Exclude a folder from Lumina")
                     }
                 }
             }
@@ -881,7 +881,7 @@ private fun FolioSettings(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "Excluded from Folio",
+                        text = "Excluded from Lumina",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -929,7 +929,7 @@ private fun FolioSettings(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "Export or restore Folio settings, favorite references and excluded folder paths as JSON.",
+                    text = "Export or restore Lumina settings, favorite references and excluded folder paths as JSON.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

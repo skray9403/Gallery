@@ -18,9 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.fossify.gallery.ui.data.FolioAlbum
-import org.fossify.gallery.ui.data.FolioMediaItem
-import org.fossify.gallery.ui.data.FolioMediaRepository
+import org.fossify.gallery.ui.data.LuminaAlbum
+import org.fossify.gallery.ui.data.LuminaMediaItem
+import org.fossify.gallery.ui.data.LuminaMediaRepository
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -29,13 +29,13 @@ import java.time.format.FormatStyle
 import java.util.Locale
 
 @Immutable
-data class FolioDateGroup(
+data class LuminaDateGroup(
     val date: LocalDate?,
     val label: String,
-    val items: List<FolioMediaItem>
+    val items: List<LuminaMediaItem>
 )
 
-enum class FolioTab(val label: String) {
+enum class LuminaTab(val label: String) {
     PHOTOS("Photos"),
     ALBUMS("Albums"),
     FAVORITES("Favorites"),
@@ -44,15 +44,15 @@ enum class FolioTab(val label: String) {
 }
 
 @Immutable
-data class FolioUiState(
-    val selectedTab: FolioTab = FolioTab.PHOTOS,
-    val rawMediaItems: List<FolioMediaItem> = emptyList(),
-    val rawTrashItems: List<FolioMediaItem> = emptyList(),
-    val visibleItems: List<FolioMediaItem> = emptyList(),
-    val favoriteItems: List<FolioMediaItem> = emptyList(),
-    val trashItems: List<FolioMediaItem> = emptyList(),
-    val albums: List<FolioAlbum> = emptyList(),
-    val dateGroups: List<FolioDateGroup> = emptyList(),
+data class LuminaUiState(
+    val selectedTab: LuminaTab = LuminaTab.PHOTOS,
+    val rawMediaItems: List<LuminaMediaItem> = emptyList(),
+    val rawTrashItems: List<LuminaMediaItem> = emptyList(),
+    val visibleItems: List<LuminaMediaItem> = emptyList(),
+    val favoriteItems: List<LuminaMediaItem> = emptyList(),
+    val trashItems: List<LuminaMediaItem> = emptyList(),
+    val albums: List<LuminaAlbum> = emptyList(),
+    val dateGroups: List<LuminaDateGroup> = emptyList(),
     val hasAccess: Boolean = false,
     val isLoading: Boolean = false,
     val searchText: String = "",
@@ -62,7 +62,7 @@ data class FolioUiState(
     val favorites: Set<String> = emptySet(),
     val excludedPaths: Set<String> = emptySet(),
     val selectedUris: Set<String> = emptySet(),
-    val selectedMedia: FolioMediaItem? = null,
+    val selectedMedia: LuminaMediaItem? = null,
     val selectedSourceRect: Rect? = null,
     val pickerMode: Boolean = false,
     val pickerMimeType: String? = null,
@@ -71,46 +71,46 @@ data class FolioUiState(
     val isSelectionMode: Boolean get() = selectedUris.isNotEmpty()
 }
 
-sealed interface FolioUiEvent {
-    data class SelectTab(val tab: FolioTab) : FolioUiEvent
-    data class MediaClicked(val item: FolioMediaItem, val bounds: Rect?) : FolioUiEvent
-    data class MediaLongClicked(val item: FolioMediaItem) : FolioUiEvent
-    data class ToggleSelection(val item: FolioMediaItem) : FolioUiEvent
-    data object ClearSelection : FolioUiEvent
-    data object SelectAll : FolioUiEvent
-    data class ToggleFavorite(val item: FolioMediaItem) : FolioUiEvent
-    data class SearchChanged(val query: String) : FolioUiEvent
-    data class ShowVideosToggled(val enabled: Boolean) : FolioUiEvent
-    data class SortModeChanged(val mode: String) : FolioUiEvent
-    data class ThemeModeChanged(val mode: String) : FolioUiEvent
-    data class ExcludeFolder(val path: String) : FolioUiEvent
-    data class RemoveExcludedPath(val path: String) : FolioUiEvent
-    data object CloseViewer : FolioUiEvent
-    data object Refresh : FolioUiEvent
-    data class PermissionStatusChanged(val granted: Boolean) : FolioUiEvent
+sealed interface LuminaUiEvent {
+    data class SelectTab(val tab: LuminaTab) : LuminaUiEvent
+    data class MediaClicked(val item: LuminaMediaItem, val bounds: Rect?) : LuminaUiEvent
+    data class MediaLongClicked(val item: LuminaMediaItem) : LuminaUiEvent
+    data class ToggleSelection(val item: LuminaMediaItem) : LuminaUiEvent
+    data object ClearSelection : LuminaUiEvent
+    data object SelectAll : LuminaUiEvent
+    data class ToggleFavorite(val item: LuminaMediaItem) : LuminaUiEvent
+    data class SearchChanged(val query: String) : LuminaUiEvent
+    data class ShowVideosToggled(val enabled: Boolean) : LuminaUiEvent
+    data class SortModeChanged(val mode: String) : LuminaUiEvent
+    data class ThemeModeChanged(val mode: String) : LuminaUiEvent
+    data class ExcludeFolder(val path: String) : LuminaUiEvent
+    data class RemoveExcludedPath(val path: String) : LuminaUiEvent
+    data object CloseViewer : LuminaUiEvent
+    data object Refresh : LuminaUiEvent
+    data class PermissionStatusChanged(val granted: Boolean) : LuminaUiEvent
     data class ConfigurePicker(
         val pickerMode: Boolean,
         val mimeType: String?,
         val allowMultiple: Boolean,
         val initialUri: Uri?,
         val initialTab: String
-    ) : FolioUiEvent
+    ) : LuminaUiEvent
     data class ImportSettings(
         val favorites: Set<String>,
         val excludedPaths: Set<String>,
         val showVideos: Boolean,
         val themeMode: String,
         val sortMode: String
-    ) : FolioUiEvent
+    ) : LuminaUiEvent
 }
 
-class FolioViewModel(application: Application) : AndroidViewModel(application) {
+class LuminaViewModel(application: Application) : AndroidViewModel(application) {
     private val context: Context get() = getApplication()
-    private val preferences = context.getSharedPreferences("folio_preferences", Context.MODE_PRIVATE)
+    private val preferences = context.getSharedPreferences("lumina_preferences", Context.MODE_PRIVATE)
 
     private val _uiState = MutableStateFlow(
-        FolioUiState(
-            hasAccess = FolioMediaRepository.hasMediaAccess(context),
+        LuminaUiState(
+            hasAccess = LuminaMediaRepository.hasMediaAccess(context),
             showVideos = preferences.getBoolean("show_videos", true),
             themeMode = preferences.getString("theme_mode", "SYSTEM") ?: "SYSTEM",
             sortMode = preferences.getString("sort_mode", "DATE_DESC") ?: "DATE_DESC",
@@ -118,7 +118,7 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
             excludedPaths = preferences.getStringSet("excluded_paths", emptySet()).orEmpty().toSet()
         )
     )
-    val uiState: StateFlow<FolioUiState> = _uiState.asStateFlow()
+    val uiState: StateFlow<LuminaUiState> = _uiState.asStateFlow()
 
     private val contentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
@@ -142,38 +142,38 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun onEvent(event: FolioUiEvent) {
+    fun onEvent(event: LuminaUiEvent) {
         when (event) {
-            is FolioUiEvent.SelectTab -> {
+            is LuminaUiEvent.SelectTab -> {
                 _uiState.update { it.copy(selectedTab = event.tab, selectedUris = emptySet()) }
             }
-            is FolioUiEvent.MediaClicked -> {
+            is LuminaUiEvent.MediaClicked -> {
                 _uiState.update { it.copy(selectedMedia = event.item, selectedSourceRect = event.bounds) }
             }
-            is FolioUiEvent.MediaLongClicked -> {
+            is LuminaUiEvent.MediaLongClicked -> {
                 val key = event.item.uri.toString()
                 _uiState.update { current ->
                     val next = if (key in current.selectedUris) current.selectedUris - key else current.selectedUris + key
                     current.copy(selectedUris = next)
                 }
             }
-            is FolioUiEvent.ToggleSelection -> {
+            is LuminaUiEvent.ToggleSelection -> {
                 val key = event.item.uri.toString()
                 _uiState.update { current ->
                     val next = if (key in current.selectedUris) current.selectedUris - key else current.selectedUris + key
                     current.copy(selectedUris = next)
                 }
             }
-            FolioUiEvent.ClearSelection -> {
+            LuminaUiEvent.ClearSelection -> {
                 _uiState.update { it.copy(selectedUris = emptySet()) }
             }
-            FolioUiEvent.SelectAll -> {
+            LuminaUiEvent.SelectAll -> {
                 _uiState.update { current ->
-                    val source = if (current.selectedTab == FolioTab.TRASH) current.trashItems else current.visibleItems
+                    val source = if (current.selectedTab == LuminaTab.TRASH) current.trashItems else current.visibleItems
                     current.copy(selectedUris = source.map { it.uri.toString() }.toSet())
                 }
             }
-            is FolioUiEvent.ToggleFavorite -> {
+            is LuminaUiEvent.ToggleFavorite -> {
                 val key = event.item.uri.toString()
                 val nextFavorites = if (key in _uiState.value.favorites) {
                     _uiState.value.favorites - key
@@ -184,51 +184,51 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(favorites = nextFavorites) }
                 reprocessCurrentMedia()
             }
-            is FolioUiEvent.SearchChanged -> {
+            is LuminaUiEvent.SearchChanged -> {
                 _uiState.update { it.copy(searchText = event.query) }
                 reprocessCurrentMedia()
             }
-            is FolioUiEvent.ShowVideosToggled -> {
+            is LuminaUiEvent.ShowVideosToggled -> {
                 preferences.edit().putBoolean("show_videos", event.enabled).apply()
                 _uiState.update { it.copy(showVideos = event.enabled) }
                 reprocessCurrentMedia()
             }
-            is FolioUiEvent.SortModeChanged -> {
+            is LuminaUiEvent.SortModeChanged -> {
                 preferences.edit().putString("sort_mode", event.mode).apply()
                 _uiState.update { it.copy(sortMode = event.mode) }
                 reprocessCurrentMedia()
             }
-            is FolioUiEvent.ThemeModeChanged -> {
+            is LuminaUiEvent.ThemeModeChanged -> {
                 preferences.edit().putString("theme_mode", event.mode).apply()
                 _uiState.update { it.copy(themeMode = event.mode) }
             }
-            is FolioUiEvent.ExcludeFolder -> {
+            is LuminaUiEvent.ExcludeFolder -> {
                 val updated = _uiState.value.excludedPaths + event.path
                 preferences.edit().putStringSet("excluded_paths", updated).apply()
                 _uiState.update { it.copy(excludedPaths = updated) }
                 loadMedia()
             }
-            is FolioUiEvent.RemoveExcludedPath -> {
+            is LuminaUiEvent.RemoveExcludedPath -> {
                 val updated = _uiState.value.excludedPaths - event.path
                 preferences.edit().putStringSet("excluded_paths", updated).apply()
                 _uiState.update { it.copy(excludedPaths = updated) }
                 loadMedia()
             }
-            FolioUiEvent.CloseViewer -> {
+            LuminaUiEvent.CloseViewer -> {
                 _uiState.update { it.copy(selectedMedia = null, selectedSourceRect = null) }
             }
-            FolioUiEvent.Refresh -> {
+            LuminaUiEvent.Refresh -> {
                 loadMedia()
             }
-            is FolioUiEvent.PermissionStatusChanged -> {
-                val hasAccess = FolioMediaRepository.hasMediaAccess(context)
+            is LuminaUiEvent.PermissionStatusChanged -> {
+                val hasAccess = LuminaMediaRepository.hasMediaAccess(context)
                 _uiState.update { it.copy(hasAccess = hasAccess) }
                 if (hasAccess) loadMedia()
             }
-            is FolioUiEvent.ConfigurePicker -> {
+            is LuminaUiEvent.ConfigurePicker -> {
                 _uiState.update { current ->
-                    val tab = event.initialTab.takeIf { t -> FolioTab.entries.any { it.name == t } }
-                        ?.let { FolioTab.valueOf(it) } ?: FolioTab.PHOTOS
+                    val tab = event.initialTab.takeIf { t -> LuminaTab.entries.any { it.name == t } }
+                        ?.let { LuminaTab.valueOf(it) } ?: LuminaTab.PHOTOS
                     current.copy(
                         pickerMode = event.pickerMode,
                         pickerMimeType = event.mimeType,
@@ -244,7 +244,7 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 reprocessCurrentMedia()
             }
-            is FolioUiEvent.ImportSettings -> {
+            is LuminaUiEvent.ImportSettings -> {
                 preferences.edit()
                     .putStringSet("favorites", event.favorites)
                     .putStringSet("excluded_paths", event.excludedPaths)
@@ -269,7 +269,7 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadInitialUri(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             val existing = _uiState.value.rawMediaItems.firstOrNull { it.uri == uri }
-                ?: FolioMediaRepository.loadSingle(context, uri)
+                ?: LuminaMediaRepository.loadSingle(context, uri)
             if (existing != null) {
                 _uiState.update { it.copy(selectedMedia = existing) }
             }
@@ -277,7 +277,7 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadMedia() {
-        if (!FolioMediaRepository.hasMediaAccess(context)) {
+        if (!LuminaMediaRepository.hasMediaAccess(context)) {
             _uiState.update { it.copy(hasAccess = false, isLoading = false, rawMediaItems = emptyList(), rawTrashItems = emptyList()) }
             return
         }
@@ -285,8 +285,8 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, hasAccess = true) }
             val (media, trash) = withContext(Dispatchers.IO) {
-                FolioMediaRepository.loadMedia(context, _uiState.value.excludedPaths) to
-                    FolioMediaRepository.loadTrash(context)
+                LuminaMediaRepository.loadMedia(context, _uiState.value.excludedPaths) to
+                    LuminaMediaRepository.loadTrash(context)
             }
             val processed = withContext(Dispatchers.Default) {
                 calculateProcessedState(media, trash, _uiState.value)
@@ -324,15 +324,15 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun calculateProcessedState(
-        rawMedia: List<FolioMediaItem>,
-        rawTrash: List<FolioMediaItem>,
-        state: FolioUiState
+        rawMedia: List<LuminaMediaItem>,
+        rawTrash: List<LuminaMediaItem>,
+        state: LuminaUiState
     ): ProcessedMediaState {
-        val filtered = if (state.showVideos) rawMedia else rawMedia.filterNot(FolioMediaItem::isVideo)
+        val filtered = if (state.showVideos) rawMedia else rawMedia.filterNot(LuminaMediaItem::isVideo)
         val sorted = when (state.sortMode) {
             "NAME_ASC" -> filtered.sortedBy { it.displayName.lowercase(Locale.ROOT) }
-            "SIZE_DESC" -> filtered.sortedByDescending(FolioMediaItem::sizeBytes)
-            else -> filtered.sortedByDescending(FolioMediaItem::dateAddedMillis)
+            "SIZE_DESC" -> filtered.sortedByDescending(LuminaMediaItem::sizeBytes)
+            else -> filtered.sortedByDescending(LuminaMediaItem::dateAddedMillis)
         }
 
         val visible = sorted.filter { item ->
@@ -348,7 +348,7 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val favorites = visible.filter { it.uri.toString() in state.favorites }
-        val albums = FolioMediaRepository.buildAlbums(visible)
+        val albums = LuminaMediaRepository.buildAlbums(visible)
 
         val today = LocalDate.now()
         val zone = ZoneId.systemDefault()
@@ -365,7 +365,7 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
                 today.minusDays(1) -> "Yesterday"
                 else -> date.format(dateFormatter)
             }
-            FolioDateGroup(date, label, dayItems)
+            LuminaDateGroup(date, label, dayItems)
         }
 
         return ProcessedMediaState(
@@ -378,10 +378,10 @@ class FolioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private data class ProcessedMediaState(
-        val visibleItems: List<FolioMediaItem>,
-        val favoriteItems: List<FolioMediaItem>,
-        val trashItems: List<FolioMediaItem>,
-        val albums: List<FolioAlbum>,
-        val dateGroups: List<FolioDateGroup>
+        val visibleItems: List<LuminaMediaItem>,
+        val favoriteItems: List<LuminaMediaItem>,
+        val trashItems: List<LuminaMediaItem>,
+        val albums: List<LuminaAlbum>,
+        val dateGroups: List<LuminaDateGroup>
     )
 }

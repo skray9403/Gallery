@@ -7,12 +7,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.IntOffset
 
 /**
- * Central motion tokens for Folio.
+ * Central motion tokens for Lumina.
  *
  * The spring profiles and restrained fade timing are adapted from the MonoMail
- * design-system reference, then named locally so Folio can tune them independently.
+ * design-system reference, then named locally so Lumina can tune them independently.
  */
-object FolioMotion {
+object LuminaMotion {
     fun <T> bouncy() = spring<T>(
         dampingRatio = 0.65f,
         stiffness = 800f

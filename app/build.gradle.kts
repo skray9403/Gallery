@@ -29,7 +29,7 @@ val abiCodes = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86" to 3, "x86_64" 
 val abiSplits = providers.gradleProperty("ABI_SPLITS").map(String::toBoolean).getOrElse(false)
 
 base {
-    archivesName = "folio-$baseVersionCode"
+    archivesName = "lumina-$baseVersionCode"
 }
 
 android {
@@ -161,7 +161,7 @@ if (abiSplits) {
                 val unsignedSuffix =
                     if (output.outputFileName.get().endsWith("-unsigned.apk")) "-unsigned" else ""
                 output.versionCode.set(versionCode)
-                output.outputFileName.set("folio-$versionCode-foss${abiSuffix}-release${unsignedSuffix}.apk")
+                output.outputFileName.set("lumina-$versionCode-foss${abiSuffix}-release${unsignedSuffix}.apk")
             }
         }
     }
