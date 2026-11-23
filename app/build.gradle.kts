@@ -6,7 +6,6 @@ import java.io.FileInputStream
 
 plugins {
     alias(libs.plugins.android)
-    alias(libs.plugins.ksp)
     alias(libs.plugins.detekt)
     alias(libs.plugins.kotlin.compose)
 }
@@ -69,7 +68,6 @@ android {
 
     buildFeatures {
         compose = true
-        viewBinding = true
         buildConfig = true
     }
 
@@ -183,43 +181,23 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-    implementation(libs.fossify.commons)
-    implementation(libs.androidx.print)
-    implementation(libs.android.image.cropper)
-    implementation(libs.exif)
-    implementation(libs.android.gif.drawable)
+    // AndroidX Lifecycle
     implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.documentfile)
+
+    // Media3 native Compose video engine
     implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.ui)
-    implementation(libs.sanselan)
-    implementation(libs.androidphotofilters)
-    implementation(libs.androidsvg.aar)
-    implementation(libs.gestureviews)
-    implementation(libs.subsamplingscaleimageview)
-    implementation(libs.androidx.swiperefreshlayout)
-    implementation(libs.awebp)
-    implementation(libs.apng)
-    implementation(libs.avif)
-    implementation(libs.avif.integration)
-    implementation(libs.jxl.integration)
-    implementation(libs.okio)
-    implementation(libs.glide)
-    implementation(libs.picasso) {
-        exclude(group = "com.squareup.okhttp3", module = "okhttp")
-    }
-    compileOnly(libs.okhttp)
+    implementation(libs.androidx.media3.ui.compose)
 
-    ksp(libs.glide.compiler)
-    implementation(libs.zjupure.webpdecoder)
+    // ExifInterface
+    implementation(libs.androidx.exifinterface)
 
-    implementation(libs.bundles.room)
-    ksp(libs.androidx.room.compiler)
+    // Detekt
     detektPlugins(libs.compose.detekt)
 }

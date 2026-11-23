@@ -1,225 +1,112 @@
 package org.fossify.gallery.ui.navigation
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PhotoSizeSelectActual
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import org.fossify.gallery.ui.LuminaTab
+import androidx.compose.ui.unit.sp
+import org.fossify.gallery.models.Medium
+import org.fossify.gallery.ui.home.GalleryTab
 import org.fossify.gallery.ui.theme.LuminaMotion
 
+sealed interface DockMode {
+    data class Home(val currentTab: GalleryTab, val onTabSelect: (GalleryTab) -> Unit) : DockMode
+    data class Viewer(
+        val medium: Medium,
+        val isFavorite: Boolean,
+        val onFavoriteToggle: () -> Unit,
+        val onDetailsClick: () -> Unit,
+        val onDeleteClick: () -> Unit
+    ) : DockMode
+}
+
 /**
- * Single, persistent, Material 3 Expressive floating bottom dock.
+ * MonoMail-inspired floating morphing dock for Lumina.
  *
- * Implements Monomail's signature floating navigation surface:
- * - CircleShape pill container to eliminate rectangular shadow clipping artifacts.
- * - Directional scroll hysteresis (drops smoothly on downward scroll; springs back on upward scroll / rest).
- * - Animated tab expansion with Spring physics and icon-only resting state.
- * - Cross-screen morphing into viewer action controls within the exact same footprint.
+ * Morphs smoothly in-place between Home mode (Photos / Albums) and Viewer mode
+ * (5-action dock: Share, Edit, Favorite, Details, Delete) using critically damped spring motion.
  */
 @Composable
-internal fun LuminaBottomDock(
-    selectedTab: LuminaTab,
-    viewerMode: Boolean,
-    onTabSelected: (LuminaTab) -> Unit,
-    onShare: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit = {},
-    isFavorite: Boolean = false,
-    onToggleFavorite: () -> Unit = {},
-    onInfo: () -> Unit = {},
-    isScrolling: Boolean = false,
+fun LuminaBottomDock(
+    mode: DockMode,
     modifier: Modifier = Modifier
 ) {
-    // Vertical hide/reveal offset on scroll fling or immersive mode
-    val animatedOffsetY by animateDpAsState(
-        targetValue = if (isScrolling) 110.dp else 0.dp,
-        animationSpec = LuminaMotion.gentle(),
-        label = "luminaDockOffsetY"
-    )
+    val context = LocalContext.current
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .offset { IntOffset(x = 0, y = animatedOffsetY.roundToPx()) }
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
+            .navigationBarsPadding()
+            .padding(bottom = 16.dp),
+        contentAlignment = Alignment.Center
     ) {
         Surface(
-            shape = CircleShape,
+            shape = RoundedCornerShape(32.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            tonalElevation = 2.dp,
             shadowElevation = 8.dp,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
-            modifier = Modifier.animateContentSize(animationSpec = LuminaMotion.gentle())
+            tonalElevation = 6.dp,
+            modifier = Modifier.animateContentSize(animationSpec = LuminaMotion.standardSpring())
         ) {
             AnimatedContent(
-                targetState = viewerMode,
+                targetState = mode,
                 transitionSpec = {
-                    (fadeIn(LuminaMotion.contentEnter) + scaleIn(initialScale = 0.94f)) togetherWith
-                        (fadeOut(LuminaMotion.contentExit) + scaleOut(targetScale = 0.94f))
+                    fadeIn(animationSpec = LuminaMotion.contentEnter) togetherWith
+                            fadeOut(animationSpec = LuminaMotion.contentExit)
                 },
-                label = "luminaDockMode"
-            ) { inViewer ->
-                if (inViewer) {
-                    Row(
-                        modifier = Modifier
-                            .height(54.dp)
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ActionIconButton(
-                            icon = Icons.Outlined.Share,
-                            contentDescription = "Share",
-                            onClick = onShare
-                        )
-                        ActionIconButton(
-                            icon = Icons.Outlined.Edit,
-                            contentDescription = "Edit",
-                            onClick = onEdit
-                        )
-                        ActionIconButton(
-                            icon = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                            contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
-                            onClick = onToggleFavorite,
-                            selected = isFavorite
-                        )
-                        ActionIconButton(
-                            icon = Icons.Outlined.Info,
-                            contentDescription = "Details",
-                            onClick = onInfo
-                        )
-                        ActionIconButton(
-                            icon = Icons.Outlined.Delete,
-                            contentDescription = "Delete",
-                            onClick = onDelete
+                label = "dock_morph_transition"
+            ) { targetMode ->
+                when (targetMode) {
+                    is DockMode.Home -> {
+                        HomeDockContent(
+                            currentTab = targetMode.currentTab,
+                            onTabSelect = targetMode.onTabSelect
                         )
                     }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .height(54.dp)
-                            .padding(horizontal = 6.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        LuminaTab.entries.forEach { tab ->
-                            val selected = selectedTab == tab
-                            val itemBgColor by animateColorAsState(
-                                targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                animationSpec = LuminaMotion.snappy(),
-                                label = "tabBg_${tab.name}"
-                            )
-                            val itemContentColor by animateColorAsState(
-                                targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                animationSpec = LuminaMotion.snappy(),
-                                label = "tabContent_${tab.name}"
-                            )
-                            val icon = when (tab) {
-                                LuminaTab.PHOTOS -> Icons.Outlined.PhotoLibrary
-                                LuminaTab.ALBUMS -> Icons.Outlined.FolderOpen
-                                LuminaTab.FAVORITES -> Icons.Outlined.Star
-                                LuminaTab.TRASH -> Icons.Outlined.Delete
-                                LuminaTab.SETTINGS -> Icons.Outlined.Settings
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .clip(CircleShape)
-                                    .background(itemBgColor)
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = ripple(bounded = true),
-                                        onClick = { onTabSelected(tab) }
-                                    )
-                                    .padding(horizontal = 12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = tab.label,
-                                        modifier = Modifier.size(20.dp),
-                                        tint = itemContentColor
-                                    )
-                                    AnimatedVisibility(
-                                        visible = selected,
-                                        enter = expandHorizontally(LuminaMotion.gentle()) + fadeIn(LuminaMotion.contentEnter),
-                                        exit = shrinkHorizontally(LuminaMotion.gentle()) + fadeOut(LuminaMotion.contentExit)
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Spacer(Modifier.width(6.dp))
-                                            Text(
-                                                text = tab.label,
-                                                style = MaterialTheme.typography.labelLarge,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                color = itemContentColor
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    is DockMode.Viewer -> {
+                        ViewerDockContent(
+                            medium = targetMode.medium,
+                            isFavorite = targetMode.isFavorite,
+                            onFavoriteToggle = targetMode.onFavoriteToggle,
+                            onDetailsClick = targetMode.onDetailsClick,
+                            onDeleteClick = targetMode.onDeleteClick,
+                            context = context
+                        )
                     }
                 }
             }
@@ -228,34 +115,138 @@ internal fun LuminaBottomDock(
 }
 
 @Composable
-private fun ActionIconButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    selected: Boolean = false
+private fun HomeDockContent(
+    currentTab: GalleryTab,
+    onTabSelect: (GalleryTab) -> Unit
 ) {
-    val bgColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-        animationSpec = LuminaMotion.snappy(),
-        label = "actionIconBg"
-    )
-    val contentColor by animateColorAsState(
-        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-        animationSpec = LuminaMotion.snappy(),
-        label = "actionIconContent"
-    )
-
-    Surface(
-        onClick = onClick,
-        modifier = modifier.size(42.dp),
-        shape = CircleShape,
-        color = bgColor,
-        contentColor = contentColor,
-        tonalElevation = 1.dp
+    Row(
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(20.dp))
+        DockTabPill(
+            title = "Photos",
+            icon = Icons.Default.PhotoSizeSelectActual,
+            isSelected = currentTab == GalleryTab.PHOTOS,
+            onClick = { onTabSelect(GalleryTab.PHOTOS) }
+        )
+        DockTabPill(
+            title = "Albums",
+            icon = Icons.Default.PhotoLibrary,
+            isSelected = currentTab == GalleryTab.ALBUMS,
+            onClick = { onTabSelect(GalleryTab.ALBUMS) }
+        )
+    }
+}
+
+@Composable
+private fun DockTabPill(
+    title: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val bg = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+    val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(24.dp))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            tint = contentColor,
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = title,
+            color = contentColor,
+            style = MaterialTheme.typography.labelLarge,
+            fontSize = 14.sp
+        )
+    }
+}
+
+@Composable
+private fun ViewerDockContent(
+    medium: Medium,
+    isFavorite: Boolean,
+    onFavoriteToggle: () -> Unit,
+    onDetailsClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    context: Context
+) {
+    Row(
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 1. Share
+        IconButton(
+            onClick = {
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    putExtra(Intent.EXTRA_STREAM, medium.uri)
+                    type = medium.mimeType
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(shareIntent, "Share with"))
+            }
+        ) {
+            Icon(
+                imageVector = Icons.Default.Share,
+                contentDescription = "Share",
+                tint = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        // 2. Edit (fires external ACTION_EDIT chooser)
+        IconButton(
+            onClick = {
+                val editIntent = Intent(Intent.ACTION_EDIT).apply {
+                    setDataAndType(medium.uri, medium.mimeType)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(editIntent, "Edit with"))
+            }
+        ) {
+            Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = "Edit externally",
+                tint = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        // 3. Favorite
+        IconButton(onClick = onFavoriteToggle) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                contentDescription = "Favorite",
+                tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        // 4. Details
+        IconButton(onClick = onDetailsClick) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = "Details",
+                tint = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        // 5. Delete
+        IconButton(onClick = onDeleteClick) {
+            Icon(
+                imageVector = Icons.Default.Delete,
+                contentDescription = "Delete",
+                tint = MaterialTheme.colorScheme.error
+            )
         }
     }
 }

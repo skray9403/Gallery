@@ -7,42 +7,39 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.IntOffset
 
 /**
- * Central motion tokens for Lumina.
+ * Native, non-bouncy motion tokens for Lumina.
  *
- * The spring profiles and restrained fade timing are adapted from the MonoMail
- * design-system reference, then named locally so Lumina can tune them independently.
+ * Adheres strictly to critically damped / low-overshoot spring characteristics
+ * (dampingRatio = 0.92f..1.0f, stiffness = 550f..800f) to avoid floaty or bouncy animations.
  */
 object LuminaMotion {
-    fun <T> bouncy() = spring<T>(
-        dampingRatio = 0.65f,
+    fun <T> standardSpring() = spring<T>(
+        dampingRatio = 0.95f,
+        stiffness = 650f
+    )
+
+    fun <T> responsiveSpring() = spring<T>(
+        dampingRatio = 0.98f,
         stiffness = 800f
     )
 
-    fun <T> gentle() = spring<T>(
-        dampingRatio = 0.8f,
-        stiffness = 400f
-    )
-
-    fun <T> snappy() = spring<T>(
-        dampingRatio = 0.75f,
-        stiffness = 1200f
+    fun <T> gentleSpring() = spring<T>(
+        dampingRatio = 0.92f,
+        stiffness = 550f
     )
 
     val contentEnter = tween<Float>(
-        durationMillis = 250,
+        durationMillis = 200,
         easing = LinearOutSlowInEasing
     )
 
     val contentExit = tween<Float>(
-        durationMillis = 200,
+        durationMillis = 150,
         easing = FastOutSlowInEasing
     )
 
     fun screenSlide() = tween<IntOffset>(
-        durationMillis = 350,
+        durationMillis = 280,
         easing = FastOutSlowInEasing
     )
-
-    const val listStaggerDelayMillis = 30
-    const val maxListStaggerDelayMillis = 300
 }

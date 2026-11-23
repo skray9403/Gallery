@@ -17,36 +17,40 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
 private val LuminaLightColors = lightColorScheme(
-    primary = Color(0xFF405A78),
+    primary = Color(0xFF2A5288),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD7E4F8),
-    onPrimaryContainer = Color(0xFF14243A),
-    secondary = Color(0xFF536176),
+    primaryContainer = Color(0xFFD6E3FF),
+    onPrimaryContainer = Color(0xFF001B3E),
+    secondary = Color(0xFF555F71),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFDCE2EC),
-    onSecondaryContainer = Color(0xFF181C22),
-    tertiary = Color(0xFF655B78),
+    secondaryContainer = Color(0xFFD9E3F8),
+    onSecondaryContainer = Color(0xFF121C2B),
+    tertiary = Color(0xFF6E5676),
     onTertiary = Color.White,
-    background = Color(0xFFFAF9FF),
-    surface = Color(0xFFFAF9FF),
-    surfaceContainer = Color(0xFFF0F0F6),
-    surfaceContainerHigh = Color(0xFFEAEAF0),
-    surfaceContainerHighest = Color(0xFFE4E4EB)
+    background = Color(0xFFF9F9FF),
+    surface = Color(0xFFF9F9FF),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF3F3FA),
+    surfaceContainer = Color(0xFFEDEDF4),
+    surfaceContainerHigh = Color(0xFFE7E8EE),
+    surfaceContainerHighest = Color(0xFFE2E2E9)
 )
 
 private val LuminaDarkColors = darkColorScheme(
-    primary = Color(0xFFB7C9E6),
-    onPrimary = Color(0xFF1E314B),
-    primaryContainer = Color(0xFF344A66),
-    onPrimaryContainer = Color(0xFFD7E4F8),
-    secondary = Color(0xFFBEC8D9),
-    onSecondary = Color(0xFF283447),
-    secondaryContainer = Color(0xFF3C4755),
-    onSecondaryContainer = Color(0xFFDCE2EC),
-    tertiary = Color(0xFFD0C1E5),
-    onTertiary = Color(0xFF362D48),
+    primary = Color(0xFFA8C8FF),
+    onPrimary = Color(0xFF003062),
+    primaryContainer = Color(0xFF084580),
+    onPrimaryContainer = Color(0xFFD6E3FF),
+    secondary = Color(0xFFBDC7DC),
+    onSecondary = Color(0xFF273141),
+    secondaryContainer = Color(0xFF3D4758),
+    onSecondaryContainer = Color(0xFFD9E3F8),
+    tertiary = Color(0xFFDBBDE2),
+    onTertiary = Color(0xFF3D2846),
     background = Color(0xFF111318),
     surface = Color(0xFF111318),
+    surfaceContainerLowest = Color(0xFF0C0E13),
+    surfaceContainerLow = Color(0xFF191C20),
     surfaceContainer = Color(0xFF1D2024),
     surfaceContainerHigh = Color(0xFF282A2F),
     surfaceContainerHighest = Color(0xFF33353A)
@@ -82,7 +86,7 @@ fun LuminaTheme(
     MaterialExpressiveTheme(
         colorScheme = colorScheme,
         shapes = LuminaShapes,
-        motionScheme = MotionScheme.expressive(),
+        motionScheme = MotionScheme.standard(),
         content = content
     )
 }

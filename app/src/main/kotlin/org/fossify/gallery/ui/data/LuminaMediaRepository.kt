@@ -1,358 +1,200 @@
 package org.fossify.gallery.ui.data
 
-import android.Manifest
 import android.content.ContentResolver
 import android.content.ContentUris
-import android.content.ContentValues
 import android.content.Context
-import android.content.pm.PackageManager
-import android.database.Cursor
+import android.database.ContentObserver
 import android.net.Uri
-import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
-import android.os.Environment
-import android.webkit.MimeTypeMap
-import androidx.core.content.ContextCompat
-import org.fossify.gallery.helpers.MediaFetcher
-import java.io.File
-import java.util.Locale
+import androidx.activity.result.IntentSenderRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
+import org.fossify.gallery.models.Directory
+import org.fossify.gallery.models.Medium
 
-data class LuminaMediaItem(
-    val id: Long,
-    val uri: Uri,
-    val displayName: String,
-    val mimeType: String,
-    val dateAddedMillis: Long,
-    val bucketId: String?,
-    val bucketName: String,
-    val relativePath: String,
-    val width: Int,
-    val height: Int,
-    val sizeBytes: Long,
-    val isVideo: Boolean,
-    val durationMillis: Long,
-    val isTrashed: Boolean
-)
+/**
+ * Lightweight, native MediaStore repository for Lumina (Android API 33+).
+ *
+ * Directly queries MediaStore.Files for images and videos, streams updates
+ * via ContentObserver, and issues native scoped IntentSender requests.
+ */
+class LuminaMediaRepository(private val context: Context) {
+    private val contentResolver: ContentResolver = context.contentResolver
 
-data class LuminaAlbum(
-    val id: String,
-    val name: String,
-    val count: Int,
-    val cover: LuminaMediaItem
-)
+    private val projection = arrayOf(
+        MediaStore.Files.FileColumns._ID,
+        MediaStore.Files.FileColumns.DISPLAY_NAME,
+        MediaStore.Files.FileColumns.MIME_TYPE,
+        MediaStore.Files.FileColumns.WIDTH,
+        MediaStore.Files.FileColumns.HEIGHT,
+        MediaStore.Files.FileColumns.ORIENTATION,
+        MediaStore.Files.FileColumns.DURATION,
+        MediaStore.Files.FileColumns.DATE_TAKEN,
+        MediaStore.Files.FileColumns.DATE_MODIFIED,
+        MediaStore.Files.FileColumns.SIZE,
+        MediaStore.Files.FileColumns.BUCKET_ID,
+        MediaStore.Files.FileColumns.BUCKET_DISPLAY_NAME,
+        MediaStore.Files.FileColumns.RELATIVE_PATH,
+        MediaStore.Files.FileColumns.IS_FAVORITE,
+        MediaStore.Files.FileColumns.MEDIA_TYPE
+    )
 
-object LuminaMediaRepository {
-    fun hasMediaAccess(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= 33) {
-            val images = granted(context, Manifest.permission.READ_MEDIA_IMAGES)
-            val videos = granted(context, Manifest.permission.READ_MEDIA_VIDEO)
-            val selected = Build.VERSION.SDK_INT >= 34 &&
-                granted(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-            return images || videos || selected
-        }
-        return granted(context, Manifest.permission.READ_EXTERNAL_STORAGE)
-    }
+    private val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+    private val selectionArgs = arrayOf(
+        MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+        MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+    )
+    private val sortOrder = "${MediaStore.Files.FileColumns.DATE_TAKEN} DESC, ${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC, ${MediaStore.Files.FileColumns._ID} DESC"
 
-    fun permissionsToRequest(): Array<String> = when {
-        Build.VERSION.SDK_INT >= 34 -> arrayOf(
-            Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO,
-            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
-        )
-        Build.VERSION.SDK_INT >= 33 -> arrayOf(
-            Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO
-        )
-        else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-    }
-
-    fun loadMedia(
-        context: Context,
-        excludedRelativePaths: Set<String> = emptySet()
-    ): List<LuminaMediaItem> {
-        val indexed = loadCollections(context, trashed = false)
-        val supplemental = if (Build.VERSION.SDK_INT >= 30) loadLegacySpecialFormats(context) else emptyList()
-        val merged = (indexed + supplemental).distinctBy {
-            it.relativePath.trim('/').lowercase(Locale.ROOT) + "|" + it.displayName.lowercase(Locale.ROOT)
-        }
-        val excluded = excludedRelativePaths.map { it.trim('/') }.filter { it.isNotBlank() }
-        if (excluded.isEmpty()) return merged
-        return merged.filterNot { item ->
-            val mediaPath = item.relativePath.trim('/')
-            excluded.any { folder ->
-                mediaPath.equals(folder, ignoreCase = true) ||
-                    mediaPath.startsWith("$folder/", ignoreCase = true)
+    val mediaFlow: Flow<List<Medium>> = callbackFlow {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                trySend(Unit)
             }
         }
-    }
 
-    /**
-     * Supplement standard Images/Video collections with formats recognised by
-     * the original Gallery scanner (RAW, SVG, GIF, APNG, AVIF and JPEG XL).
-     *
-     * Only MediaStore content URIs are returned, retaining scoped-storage grants.
-     */
-    private fun loadLegacySpecialFormats(context: Context): List<LuminaMediaItem> {
-        val byFolder = runCatching {
-            MediaFetcher(context).getAndroid11FolderMedia(
-                isPickImage = false,
-                isPickVideo = false,
-                favoritePaths = arrayListOf(),
-                getFavoritePathsOnly = false,
-                getProperDateTaken = false,
-                dateTakens = HashMap()
-            )
-        }.getOrNull() ?: return emptyList()
-
-        val filesUri = MediaStore.Files.getContentUri("external")
-        val storageRoot = Environment.getExternalStorageDirectory().absolutePath.trimEnd('/') + "/"
-        val mimeMap = MimeTypeMap.getSingleton()
-        return byFolder.values.flatten().mapNotNull { medium ->
-            if (medium.mediaStoreId <= 0L) return@mapNotNull null
-            val extension = medium.name.substringAfterLast('.', "").lowercase(Locale.ROOT)
-            val mime = mimeMap.getMimeTypeFromExtension(extension)
-                ?: if (medium.isVideo()) "video/*" else "image/*"
-            val parent = medium.parentPath.trimEnd('/')
-            val relative = if (parent.startsWith(storageRoot, ignoreCase = true)) {
-                parent.removePrefix(storageRoot).trim('/')
-            } else {
-                parent.trim('/')
-            }
-            LuminaMediaItem(
-                id = medium.mediaStoreId,
-                uri = ContentUris.withAppendedId(filesUri, medium.mediaStoreId),
-                displayName = medium.name,
-                mimeType = mime,
-                dateAddedMillis = if (medium.taken > 0L) medium.taken else medium.modified,
-                bucketId = null,
-                bucketName = File(parent).name.ifBlank { "Other" },
-                relativePath = if (relative.isBlank()) "" else relative + "/",
-                width = 0,
-                height = 0,
-                sizeBytes = medium.size,
-                isVideo = medium.isVideo(),
-                durationMillis = medium.videoDuration * 1000L,
-                isTrashed = false
-            )
-        }
-    }
-
-    fun loadTrash(context: Context): List<LuminaMediaItem> =
-        if (Build.VERSION.SDK_INT >= 30) loadCollections(context, trashed = true) else emptyList()
-
-    fun restore(context: Context, uri: Uri): Boolean {
-        if (Build.VERSION.SDK_INT < 30) return false
-        return try {
-            val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.IS_TRASHED, 0)
-            }
-            context.contentResolver.update(uri, values, null, null) > 0
-        } catch (_: SecurityException) {
-            false
-        } catch (_: IllegalArgumentException) {
-            false
-        }
-    }
-
-
-    fun loadSingle(context: Context, uri: Uri): LuminaMediaItem? {
-        val resolver = context.contentResolver
-        val mimeType = runCatching { resolver.getType(uri) }
-            .getOrNull()
-            ?: "application/octet-stream"
-
-        return try {
-            resolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (!cursor.moveToFirst()) return@use null
-
-                fun stringColumn(name: String): String? {
-                    val index = cursor.getColumnIndex(name)
-                    return if (index >= 0 && !cursor.isNull(index)) cursor.getString(index) else null
-                }
-
-                fun longColumn(name: String): Long? {
-                    val index = cursor.getColumnIndex(name)
-                    return if (index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else null
-                }
-
-                fun intColumn(name: String): Int {
-                    val index = cursor.getColumnIndex(name)
-                    return if (index >= 0 && !cursor.isNull(index)) cursor.getInt(index) else 0
-                }
-
-                val isVideo = mimeType.startsWith("video/", ignoreCase = true)
-                val dateAdded = longColumn(MediaStore.MediaColumns.DATE_ADDED)?.times(1000L)
-                    ?: System.currentTimeMillis()
-                val dateTaken = longColumn(MediaStore.Images.Media.DATE_TAKEN) ?: 0L
-                val id = longColumn(MediaStore.MediaColumns._ID)
-                    ?: uri.lastPathSegment?.toLongOrNull()
-                    ?: -1L
-
-                LuminaMediaItem(
-                    id = id,
-                    uri = uri,
-                    displayName = stringColumn(android.provider.OpenableColumns.DISPLAY_NAME)
-                        ?: uri.lastPathSegment
-                        ?: "Shared media",
-                    mimeType = stringColumn(MediaStore.MediaColumns.MIME_TYPE) ?: mimeType,
-                    dateAddedMillis = maxOf(dateAdded, dateTaken),
-                    bucketId = stringColumn(
-                        if (isVideo) MediaStore.Video.Media.BUCKET_ID else MediaStore.Images.Media.BUCKET_ID
-                    ),
-                    bucketName = stringColumn(
-                        if (isVideo) MediaStore.Video.Media.BUCKET_DISPLAY_NAME else MediaStore.Images.Media.BUCKET_DISPLAY_NAME
-                    ) ?: "Shared media",
-                    relativePath = stringColumn(MediaStore.MediaColumns.RELATIVE_PATH).orEmpty(),
-                    width = intColumn(MediaStore.MediaColumns.WIDTH),
-                    height = intColumn(MediaStore.MediaColumns.HEIGHT),
-                    sizeBytes = longColumn(android.provider.OpenableColumns.SIZE) ?: 0L,
-                    isVideo = isVideo,
-                    durationMillis = longColumn(MediaStore.Video.Media.DURATION) ?: 0L,
-                    isTrashed = false
-                )
-            }
-        } catch (_: SecurityException) {
-            null
-        } catch (_: IllegalArgumentException) {
-            null
-        }
-    }
-
-    fun buildAlbums(items: List<LuminaMediaItem>): List<LuminaAlbum> =
-        items.groupBy { it.bucketId ?: it.bucketName.ifBlank { "unknown" } }
-            .mapNotNull { (id, contents) ->
-                val cover = contents.maxByOrNull(LuminaMediaItem::dateAddedMillis)
-                    ?: return@mapNotNull null
-                LuminaAlbum(
-                    id = id,
-                    name = cover.bucketName.ifBlank { "Other" },
-                    count = contents.size,
-                    cover = cover
-                )
-            }
-            .sortedByDescending { it.cover.dateAddedMillis }
-
-    private fun granted(context: Context, permission: String): Boolean =
-        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-
-    private fun loadCollections(context: Context, trashed: Boolean): List<LuminaMediaItem> {
-        val resolver = context.contentResolver
-        val images = queryCollection(
-            resolver,
+        contentResolver.registerContentObserver(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            video = false,
-            trashed = trashed
+            true,
+            observer
         )
-        val videos = queryCollection(
-            resolver,
+        contentResolver.registerContentObserver(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            video = true,
-            trashed = trashed
+            true,
+            observer
         )
-        return (images + videos).sortedByDescending(LuminaMediaItem::dateAddedMillis)
-    }
 
-    private fun queryCollection(
-        resolver: ContentResolver,
-        collection: Uri,
-        video: Boolean,
-        trashed: Boolean
-    ): List<LuminaMediaItem> {
-        val projection = buildList {
-            add(MediaStore.MediaColumns._ID)
-            add(MediaStore.MediaColumns.DISPLAY_NAME)
-            add(MediaStore.MediaColumns.MIME_TYPE)
-            add(MediaStore.MediaColumns.DATE_ADDED)
-            add(MediaStore.MediaColumns.SIZE)
-            add(MediaStore.MediaColumns.WIDTH)
-            add(MediaStore.MediaColumns.HEIGHT)
-            add(if (video) MediaStore.Video.Media.BUCKET_ID else MediaStore.Images.Media.BUCKET_ID)
-            add(if (video) MediaStore.Video.Media.BUCKET_DISPLAY_NAME else MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
-            add(if (video) MediaStore.Video.Media.DURATION else MediaStore.Images.Media.DATE_TAKEN)
-            if (Build.VERSION.SDK_INT >= 29) add(MediaStore.MediaColumns.RELATIVE_PATH)
-            if (Build.VERSION.SDK_INT >= 30) add(MediaStore.MediaColumns.IS_TRASHED)
-        }.toTypedArray()
+        // Initial emission
+        trySend(Unit)
 
-        val selection = if (Build.VERSION.SDK_INT >= 30) {
-            "${MediaStore.MediaColumns.IS_TRASHED} = ?"
-        } else {
-            null
+        awaitClose {
+            contentResolver.unregisterContentObserver(observer)
         }
-        val selectionArgs = if (selection != null) arrayOf(if (trashed) "1" else "0") else null
+    }
+        .debounce(250)
+        .flowOn(Dispatchers.Default)
+        .let { triggerFlow ->
+            flow {
+                triggerFlow.collect {
+                    emit(queryAllMedia())
+                }
+            }
+        }
+        .flowOn(Dispatchers.IO)
 
-        return try {
-            resolver.query(
-                collection,
+    suspend fun queryAllMedia(): List<Medium> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<Medium>()
+        val queryUri = MediaStore.Files.getContentUri("external")
+
+        try {
+            contentResolver.query(
+                queryUri,
                 projection,
                 selection,
                 selectionArgs,
-                "${MediaStore.MediaColumns.DATE_ADDED} DESC"
+                sortOrder
             )?.use { cursor ->
-                cursor.readLuminaItems(collection, video, trashed)
-            }.orEmpty()
-        } catch (_: SecurityException) {
-            emptyList()
-        } catch (_: IllegalArgumentException) {
-            emptyList()
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
+                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
+                val widthCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.WIDTH)
+                val heightCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.HEIGHT)
+                val orientCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.ORIENTATION)
+                val durCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DURATION)
+                val dateTakenCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_TAKEN)
+                val dateModCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DATE_MODIFIED)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.SIZE)
+                val bucketIdCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.BUCKET_ID)
+                val bucketNameCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.BUCKET_DISPLAY_NAME)
+                val relPathCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.RELATIVE_PATH)
+                val favCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.IS_FAVORITE)
+                val typeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
+
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idCol)
+                    val mediaType = cursor.getInt(typeCol)
+                    val isVideo = mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO
+                    val contentBaseUri = if (isVideo) {
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    } else {
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    }
+                    val uri = ContentUris.withAppendedId(contentBaseUri, id)
+
+                    val mimeType = cursor.getString(mimeCol) ?: (if (isVideo) "video/mp4" else "image/jpeg")
+                    val isAnimated = mimeType.contains("gif", ignoreCase = true) ||
+                            mimeType.contains("webp", ignoreCase = true) ||
+                            mimeType.contains("apng", ignoreCase = true)
+
+                    val dateTaken = cursor.getLong(dateTakenCol)
+                    val dateModified = cursor.getLong(dateModCol) * 1000L
+                    val finalDate = if (dateTaken > 0L) dateTaken else dateModified
+
+                    result.add(
+                        Medium(
+                            id = id,
+                            uri = uri,
+                            displayName = cursor.getString(nameCol) ?: "Media_$id",
+                            mimeType = mimeType,
+                            width = cursor.getInt(widthCol),
+                            height = cursor.getInt(heightCol),
+                            orientation = cursor.getInt(orientCol),
+                            durationMs = if (isVideo) cursor.getLong(durCol) else 0L,
+                            dateTakenMs = finalDate,
+                            dateModifiedMs = dateModified,
+                            sizeBytes = cursor.getLong(sizeCol),
+                            bucketId = cursor.getLong(bucketIdCol),
+                            bucketName = cursor.getString(bucketNameCol) ?: "Internal",
+                            relativePath = cursor.getString(relPathCol) ?: "",
+                            isFavorite = cursor.getInt(favCol) == 1,
+                            isVideo = isVideo,
+                            isAnimated = isAnimated
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) {
         }
+
+        result
     }
 
-    private fun Cursor.readLuminaItems(
-        collection: Uri,
-        video: Boolean,
-        trashed: Boolean
-    ): List<LuminaMediaItem> {
-        val idColumn = getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-        val nameColumn = getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
-        val mimeColumn = getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
-        val dateColumn = getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
-        val sizeColumn = getColumnIndex(MediaStore.MediaColumns.SIZE)
-        val widthColumn = getColumnIndex(MediaStore.MediaColumns.WIDTH)
-        val heightColumn = getColumnIndex(MediaStore.MediaColumns.HEIGHT)
-        val bucketIdColumn = getColumnIndex(
-            if (video) MediaStore.Video.Media.BUCKET_ID else MediaStore.Images.Media.BUCKET_ID
-        )
-        val bucketNameColumn = getColumnIndex(
-            if (video) MediaStore.Video.Media.BUCKET_DISPLAY_NAME else MediaStore.Images.Media.BUCKET_DISPLAY_NAME
-        )
-        val durationColumn = if (video) getColumnIndex(MediaStore.Video.Media.DURATION) else -1
-        val dateTakenColumn = if (video) -1 else getColumnIndex(MediaStore.Images.Media.DATE_TAKEN)
-        val relativePathColumn = getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
-
-        return buildList {
-            while (moveToNext()) {
-                val id = getLong(idColumn)
-                val dateAdded = if (dateColumn >= 0) getLong(dateColumn) * 1000L else 0L
-                val dateTaken = if (dateTakenColumn >= 0 && !isNull(dateTakenColumn)) {
-                    getLong(dateTakenColumn)
-                } else {
-                    0L
-                }
-                add(
-                    LuminaMediaItem(
-                        id = id,
-                        uri = ContentUris.withAppendedId(collection, id),
-                        displayName = if (nameColumn >= 0) getString(nameColumn).orEmpty() else "",
-                        mimeType = if (mimeColumn >= 0) {
-                            getString(mimeColumn) ?: if (video) "video/*" else "image/*"
-                        } else if (video) "video/*" else "image/*",
-                        dateAddedMillis = maxOf(dateAdded, dateTaken),
-                        bucketId = if (bucketIdColumn >= 0) getString(bucketIdColumn) else null,
-                        bucketName = if (bucketNameColumn >= 0) {
-                            getString(bucketNameColumn).orEmpty().ifBlank { "Other" }
-                        } else {
-                            "Other"
-                        },
-                        relativePath = if (relativePathColumn >= 0) getString(relativePathColumn).orEmpty() else "",
-                        width = if (widthColumn >= 0) getInt(widthColumn) else 0,
-                        height = if (heightColumn >= 0) getInt(heightColumn) else 0,
-                        sizeBytes = if (sizeColumn >= 0) getLong(sizeColumn) else 0L,
-                        isVideo = video,
-                        durationMillis = if (durationColumn >= 0) getLong(durationColumn) else 0L,
-                        isTrashed = trashed
-                    )
+    fun extractDirectories(media: List<Medium>): List<Directory> {
+        return media.groupBy { it.bucketId }
+            .map { (bucketId, items) ->
+                val latest = items.maxByOrNull { it.dateTakenMs } ?: items.first()
+                Directory(
+                    bucketId = bucketId,
+                    name = latest.bucketName.ifEmpty { "Pictures" },
+                    coverUri = latest.uri,
+                    mediaCount = items.size,
+                    latestDateMs = latest.dateTakenMs,
+                    relativePath = latest.relativePath
                 )
             }
-        }
+            .sortedByDescending { it.latestDateMs }
+    }
+
+    fun createTrashRequest(uris: List<Uri>, isTrash: Boolean): IntentSenderRequest {
+        val pendingIntent = MediaStore.createTrashRequest(contentResolver, uris, isTrash)
+        return IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+    }
+
+    fun createDeleteRequest(uris: List<Uri>): IntentSenderRequest {
+        val pendingIntent = MediaStore.createDeleteRequest(contentResolver, uris)
+        return IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+    }
+
+    fun createFavoriteRequest(uris: List<Uri>, isFavorite: Boolean): IntentSenderRequest {
+        val pendingIntent = MediaStore.createFavoriteRequest(contentResolver, uris, isFavorite)
+        return IntentSenderRequest.Builder(pendingIntent.intentSender).build()
     }
 }
