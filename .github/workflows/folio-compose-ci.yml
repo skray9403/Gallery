@@ -82,3 +82,4 @@ jobs:
             app/build/test-results/**
           if-no-files-found: ignore
           retention-days: 14
+# Lumina gallery CI build
