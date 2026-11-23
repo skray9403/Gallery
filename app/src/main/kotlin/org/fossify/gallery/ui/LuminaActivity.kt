@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 /**
  * Compose entry point for Lumina and Android's image/video picker intents.
  *
+ * Lumina: modern, expressive Jetpack Compose gallery application.
  * The old media activities remain as compatibility services while their
  * behavior is migrated; normal launch and picker flows now enter Compose.
  */
