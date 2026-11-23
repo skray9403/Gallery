@@ -12,11 +12,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -62,7 +62,7 @@ fun LuminaApp(
     val viewerViewModel: ViewerViewModel = viewModel()
     val repository = remember { LuminaMediaRepository(context) }
 
-    val galleryState by galleryViewModel.uiState.collectAsState()
+    val galleryState by galleryViewModel.uiState.collectAsStateWithLifecycle()
 
     var activeViewerIndex by remember { mutableStateOf<Int?>(null) }
 

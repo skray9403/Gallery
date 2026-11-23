@@ -187,6 +187,7 @@ dependencies {
 
     // AndroidX Lifecycle
     implementation(libs.androidx.lifecycle.runtime)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.documentfile)
@@ -197,6 +198,9 @@ dependencies {
 
     // ExifInterface
     implementation(libs.androidx.exifinterface)
+
+    // Testing
+    testImplementation(libs.junit)
 
     // Detekt
     detektPlugins(libs.compose.detekt)
